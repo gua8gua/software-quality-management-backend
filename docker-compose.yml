@@ -1,0 +1,60 @@
+# =============================================================================
+# 所有可配置参数统一在 .env 中管理，docker compose 自动读取
+# =============================================================================
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-software_quality_management}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-software_quality_management}"]
+      interval: ${HEALTHCHECK_INTERVAL:-5s}
+      timeout: ${HEALTHCHECK_TIMEOUT:-5s}
+      retries: ${HEALTHCHECK_RETRIES:-10}
+
+  api:
+    build: .
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-software_quality_management}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-https://api.openai.com/v1}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1536}
+      MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-30}
+      VECTOR_STORE: ${VECTOR_STORE:-pgvector}
+      CHUNK_SIZE: ${CHUNK_SIZE:-800}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-100}
+      TOP_K: ${TOP_K:-5}
+      # 通用大模型（供重排等能力使用）
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai_compatible}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
+      # 重排（rerank）
+      RERANK_ENABLED: ${RERANK_ENABLED:-false}
+      RERANK_PROVIDER: ${RERANK_PROVIDER:-llm}
+      RERANK_TOP_N: ${RERANK_TOP_N:-5}
+      RERANK_MAX_CANDIDATES: ${RERANK_MAX_CANDIDATES:-20}
+      RERANK_CHUNK_MAX_CHARS: ${RERANK_CHUNK_MAX_CHARS:-1000}
+      RERANK_TEMPERATURE: ${RERANK_TEMPERATURE:-0.0}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # 日志目录挂载到宿主机，路径经 .env 配置；容器内挂载点跟随 LOG_DIR
+      - "${LOG_HOST_DIR:-./logs}:/app/${LOG_DIR:-logs}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
