@@ -27,23 +27,23 @@
 
 ## 3. 可用数据集
 
-| 名称 | 适合做什么 | 链接 |
-|---|---|---|
-| SEOSS 33 | 需求、缺陷报告、代码历史、trace link 的综合研究数据 | [论文/数据说明](https://doi.org/10.1145/3355140) |
-| fine-grained traceability replication package | 需求到代码的细粒度 traceability 研究基线 | [GitHub](https://github.com/SEOSS20/fine-grained-traceability) |
-| CodeSearchNet | 文档字符串与代码对齐、代码检索 | [GitHub](https://github.com/github/CodeSearchNet) |
-| SWE-bench | issue、补丁、测试、仓库代码联合分析 | [网站](https://www.swebench.com/) / [GitHub](https://github.com/swe-bench/SWE-bench) |
-| Defects4J | 缺陷修复、测试、回归分析 | [GitHub](https://github.com/rjust/defects4j) |
-| iTrust2 | 带需求、设计、代码、测试的教学型软件系统 | [GitHub](https://github.com/sen-uni-kn/itrust2) |
+| 名称                                          | 适合做什么                                          | 链接                                                                               |
+| --------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| SEOSS 33                                      | 需求、缺陷报告、代码历史、trace link 的综合研究数据 | [论文/数据说明](https://doi.org/10.1145/3355140)                                    |
+| fine-grained traceability replication package | 需求到代码的细粒度 traceability 研究基线            | [GitHub](https://github.com/SEOSS20/fine-grained-traceability)                      |
+| CodeSearchNet                                 | 文档字符串与代码对齐、代码检索                      | [GitHub](https://github.com/github/CodeSearchNet)                                   |
+| SWE-bench                                     | issue、补丁、测试、仓库代码联合分析                 | [网站](https://www.swebench.com/) / [GitHub](https://github.com/swe-bench/SWE-bench) |
+| Defects4J                                     | 缺陷修复、测试、回归分析                            | [GitHub](https://github.com/rjust/defects4j)                                        |
+| iTrust2                                       | 带需求、设计、代码、测试的教学型软件系统            | [GitHub](https://github.com/sen-uni-kn/itrust2)                                     |
 
 ## 4. 参考项目
 
-| 项目 | 参考价值 | 链接 |
-|---|---|---|
-| SonarQube | 代码质量门禁、规则引擎、质量报告 | [GitHub](https://github.com/SonarSource/sonarqube) |
-| GitLab | 需求、代码、CI/CD、Issue 一体化协同 | [官网](https://about.gitlab.com/) |
-| JanusTrace | 需求到代码 traceability 工具 | [GitHub](https://github.com/anelyud/JanusTrace) |
-| fine-grained traceability | trace link 研究与实现基线 | [GitHub](https://github.com/SEOSS20/fine-grained-traceability) |
+| 项目                      | 参考价值                            | 链接                                                          |
+| ------------------------- | ----------------------------------- | ------------------------------------------------------------- |
+| SonarQube                 | 代码质量门禁、规则引擎、质量报告    | [GitHub](https://github.com/SonarSource/sonarqube)             |
+| GitLab                    | 需求、代码、CI/CD、Issue 一体化协同 | [官网](https://about.gitlab.com/)                              |
+| JanusTrace                | 需求到代码 traceability 工具        | [GitHub](https://github.com/anelyud/JanusTrace)                |
+| fine-grained traceability | trace link 研究与实现基线           | [GitHub](https://github.com/SEOSS20/fine-grained-traceability) |
 
 ## 5. 参考论文
 
@@ -58,3 +58,6 @@
 2. 文档先支持 `txt / md / pdf / docx / html`
 3. 代码先支持仓库导入和文件级索引
 4. 再做 trace link、覆盖率和一致性检查
+
+
+## 7. 需求文档需求分割
