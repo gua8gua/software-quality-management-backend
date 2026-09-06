@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.routes import documents, knowledge_bases, rag
+from app.modules.model_config.router import router as model_config_router
 from app.modules.tlr.catalog import router as catalog_router
 from app.modules.tlr.planning import router as planning_router
 from app.modules.tlr.router import router as tlr_router
@@ -12,4 +13,5 @@ api_router.include_router(rag.router)
 api_router.include_router(tlr_router)
 api_router.include_router(catalog_router)
 api_router.include_router(planning_router)
+api_router.include_router(model_config_router)
 

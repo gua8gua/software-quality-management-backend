@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
+from app.modules.model_config.runtime import resolve_tlr_models
 from app.modules.tlr.diagnostics import PreprocessingFailure, failure_detail, preflight
 from app.modules.tlr.models import (
     TlrArtifact,
@@ -52,6 +53,8 @@ class TlrService:
         self.repo = TlrRepository(session)
         self.embedding = embedding
         self.classifier = PairClassifier(llm)
+        self.architecture_llm = llm
+        self.model_snapshot: dict = {}
         self.settings = settings
 
     async def import_dataset(self, request: DatasetInput, *, commit: bool = True):
@@ -129,6 +132,13 @@ class TlrService:
         await self.session.commit()
         await self.session.refresh(run)
         try:
+            embedding, classifier_llm, architecture_llm, snapshot = await resolve_tlr_models(
+                self.session, self.settings, tenant_id, self.embedding, self.classifier.llm
+            )
+            self.embedding = embedding
+            self.classifier = PairClassifier(classifier_llm)
+            self.architecture_llm = architecture_llm
+            self.model_snapshot = snapshot
             preflight(self.embedding, self.classifier.llm)
             async with asyncio.timeout(self.settings.tlr_run_timeout_seconds):
                 await self._pipeline(run)
@@ -178,10 +188,11 @@ class TlrService:
             "prompt_sha256": digest(PROMPT),
             "prompt": PROMPT,
             "aggregation": "any_positive_element_pair",
-            "embedding_model": self.settings.embedding_model,
-            "embedding_base_url": self.settings.model_base_url,
+            "model_tasks": self.model_snapshot,
+            "embedding_model": self.model_snapshot["tlr_embedding"]["model_id"],
+            "embedding_base_url": self.model_snapshot["tlr_embedding"]["base_url"],
             "llm_model": self.classifier.llm.model,
-            "llm_base_url": self.settings.llm_base_url,
+            "llm_base_url": self.model_snapshot["tlr_classification"]["base_url"],
             "temperature": 0.0,
         }
         await self.session.commit()
@@ -193,7 +204,7 @@ class TlrService:
                 if artifact.external_id in selected:
                     try:
                         units = await preprocess_typed(
-                            artifact, role, run.id, options, self.classifier.llm
+                            artifact, role, run.id, options, self.architecture_llm
                         )
                     except (ValueError, SyntaxError) as exc:
                         raise PreprocessingFailure(str(exc)) from exc

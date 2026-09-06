@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_dimension: int = Field(default=1536, gt=0)
     model_timeout_seconds: float = Field(default=30.0, gt=0)
+    model_config_encryption_key: str = ""
+    model_config_key_file: str = "data/.model-config.key"
 
     vector_store: str = "pgvector"
     chunk_size: int = Field(default=800, gt=0)

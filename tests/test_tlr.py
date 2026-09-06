@@ -275,6 +275,11 @@ def test_migration_upgrade_schema_matches_models_and_downgrades():
     )
     structure_migration = importlib.util.module_from_spec(structure_spec)
     structure_spec.loader.exec_module(structure_migration)
+    model_spec = importlib.util.spec_from_file_location(
+        "model_config_migration", path.parent / "20260906_0005_model_config.py"
+    )
+    model_migration = importlib.util.module_from_spec(model_spec)
+    model_spec.loader.exec_module(model_migration)
     metadata = MetaData()
     for table in TLR_TABLES:
         table.to_metadata(metadata)
@@ -284,8 +289,10 @@ def test_migration_upgrade_schema_matches_models_and_downgrades():
             migration.upgrade()
             next_migration.upgrade()
             structure_migration.upgrade()
+            model_migration.upgrade()
             assert set(inspect(connection).get_table_names()) == set(metadata.tables)
             assert compare_metadata(context, metadata) == []
+            model_migration.downgrade()
             structure_migration.downgrade()
             next_migration.downgrade()
             migration.downgrade()

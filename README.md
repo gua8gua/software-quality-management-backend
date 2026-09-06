@@ -104,7 +104,7 @@ python -m venv .venv
 
 初始化脚本创建 `.env` 和 `data/tlr.sqlite` 中的 TLR 表；已有 `.env` 会退出，不覆盖配置。此模式不要预先复制 `.env.example`，也不要执行包含 pgvector 的完整 Alembic 迁移。初始化不自动导入样例；启动后可在前端新建项目并上传资料。
 
-当前工作区已经完成这一步，并导入 SMOS 的 67 份需求和 100 份代码，可直接使用下面的日常启动指令。真实检测还需在后端 `.env` 配置 MODEL_BASE_URL、MODEL_API_KEY、EMBEDDING_MODEL，以及 LLM_BASE_URL、LLM_API_KEY、LLM_MODEL，修改后重启后端。
+当前工作区已经完成这一步，并导入 SMOS 的 67 份需求和 100 份代码，可直接使用下面的日常启动指令。真实检测可在前端“模型配置”中填写 OpenAI 兼容接口并为任务选模型，无需重启；未设置任务绑定时才回退到 `.env` 中的 MODEL_* 和 LLM_* 配置。
 
 ## 日常启动（当前工作区使用这一节）
 
@@ -163,9 +163,15 @@ docker compose logs --tail 50 api
 
 ## TLR 分层与结构升级
 
-已增加多类型制品分割、层间比较矩阵和原始结构关系。详见 [分层、数据集与复现说明](docs/tlr-layers-and-structure.md)。本地 SQLite 升级执行 `.venv/Scripts/python -m scripts.upgrade_local_tlr`（先自动备份，再追加字段）；PostgreSQL 执行 `alembic upgrade head`。当前工作区已升级。
+已增加多类型制品分割、层间比较矩阵和原始结构关系。详见 [分层、数据集与复现说明](docs/tlr-layers-and-structure.md)。本地 SQLite 升级执行 `.venv/Scripts/python scripts/upgrade_local_tlr.py`（先自动备份，再追加字段和模型配置表）；PostgreSQL 执行 `alembic upgrade head`。当前工作区已升级。
 
-新版数据集是 Dronology SAFA，13 种原始类型、360 个记录、355 条原始关系；223 个包或仅有路径的引用节点不进入检测。SMOS 保留用于完整源码验证。真实执行仍需配置 MODEL_API_KEY 和 LLM_API_KEY，失败原因保存到运行详情；不要把独立测试模型结果当作真实 TLR 精度。
+新版数据集是 Dronology SAFA，13 种原始类型、360 个记录、355 条原始关系；223 个包或仅有路径的引用节点不进入检测。SMOS 保留用于完整源码验证。真实执行仍需在模型配置页或 `.env` 提供可调用的向量与对话模型，失败原因保存到运行详情；不要把独立测试模型结果当作真实 TLR 精度。
+
+## 模型配置界面
+
+前端 `#/models` 管理租户隔离的 OpenAI 兼容连接。保存连接时后端读取 `GET {base_url}/models`，展示模型 ID、提供方、目录状态以及本地/远程属性；远程连接只接受 HTTPS，本地回环或私网地址可使用 HTTP。API 密钥用 Fernet 加密保存，读取接口不返回密钥，请求日志也会脱敏。生产环境建议用 `MODEL_CONFIG_ENCRYPTION_KEY` 提供统一 Fernet key；本地未提供时会创建被忽略的 `data/.model-config.key`。
+
+当前可绑定 `TLR 向量化`、`TLR 链接判定`、`架构结构抽取` 三个任务。模型目录可访问只说明 `/models` 正常；任务旁的“实测”会真正调用 `/embeddings` 或 `/chat/completions`。数据库绑定优先于 `.env`，实际选用信息保存在每次 TLR 的 `manifest.model_tasks` 中，密钥不会进入运行记录。
 
 ## 现在的 API
 

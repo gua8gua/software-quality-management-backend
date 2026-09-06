@@ -11,6 +11,7 @@ FastAPI 体系下接口日志的推荐落地方式。
 
 from __future__ import annotations
 
+import json
 import time
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -85,6 +86,30 @@ def _preview_body(body: bytes) -> str:
         text = body.decode("utf-8")
     except UnicodeDecodeError:
         return f"<binary {len(body)} bytes>"
+    try:
+        parsed = json.loads(text)
+        text = json.dumps(_redact(parsed), ensure_ascii=False)
+    except (json.JSONDecodeError, TypeError):
+        pass
     if len(text) > _MAX_BODY_LOG:
         return text[:_MAX_BODY_LOG] + f"...<truncated {len(text) - _MAX_BODY_LOG} chars>"
     return text
+
+
+def _redact(value):
+    """Remove credentials before request bodies reach logs."""
+    if isinstance(value, dict):
+        return {
+            key: (
+                "<redacted>"
+                if any(
+                    word in key.lower()
+                    for word in ("api_key", "token", "password", "secret")
+                )
+                else _redact(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact(item) for item in value]
+    return value

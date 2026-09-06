@@ -33,8 +33,16 @@ def test_business_endpoints_are_explicit() -> None:
         ("GET", "/api/v1/tlr/artifacts/{artifact_id}"),
         ("GET", "/api/v1/tlr/artifacts/{artifact_id}/download"),
         ("GET", "/api/v1/tlr/runs/{run_id}/visualization"),
-        ("GET", "/api/v1/tlr/runs/{run_id}/candidates/{candidate_id}"),
-    }
+            ("GET", "/api/v1/tlr/runs/{run_id}/candidates/{candidate_id}"),
+            ("GET", "/api/v1/model-config"),
+            ("POST", "/api/v1/model-config/connections"),
+            ("PUT", "/api/v1/model-config/connections/{connection_id}"),
+            ("POST", "/api/v1/model-config/connections/{connection_id}/refresh"),
+            ("DELETE", "/api/v1/model-config/connections/{connection_id}"),
+            ("PUT", "/api/v1/model-config/tasks/{task}"),
+            ("POST", "/api/v1/model-config/tasks/{task}/test"),
+            ("DELETE", "/api/v1/model-config/tasks/{task}"),
+        }
 
 
 def test_openapi_describes_unified_success_responses() -> None:

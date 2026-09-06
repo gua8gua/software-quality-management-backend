@@ -18,12 +18,14 @@ class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
         model: str,
         expected_dimension: int,
         timeout_seconds: float = 30.0,
+        trust_env: bool = True,
     ) -> None:
         self._url = f"{base_url.rstrip('/')}/embeddings"
         self._api_key = api_key
         self._model = model
         self._expected_dimension = expected_dimension
         self._timeout_seconds = timeout_seconds
+        self._trust_env = trust_env
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -40,7 +42,9 @@ class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
         headers = {"Authorization": f"Bearer {self._api_key}"}
         payload: dict[str, Any] = {"model": self._model, "input": texts}
         try:
-            async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout_seconds, trust_env=self._trust_env
+            ) as client:
                 response = await client.post(self._url, headers=headers, json=payload)
                 response.raise_for_status()
                 body = response.json()

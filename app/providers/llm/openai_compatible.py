@@ -30,6 +30,7 @@ class OpenAICompatibleLLMProvider(LLMProvider):
         model: str,
         timeout_seconds: float = 60.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        trust_env: bool = True,
     ) -> None:
         self._url = f"{base_url.rstrip('/')}/chat/completions"
         self._api_key = api_key
@@ -37,6 +38,7 @@ class OpenAICompatibleLLMProvider(LLMProvider):
         self._timeout_seconds = timeout_seconds
         # transport 仅用于测试注入（httpx.MockTransport），生产环境为 None。
         self._transport = transport
+        self._trust_env = trust_env
 
     async def chat_json(
         self,
@@ -73,7 +75,7 @@ class OpenAICompatibleLLMProvider(LLMProvider):
 
         try:
             async with httpx.AsyncClient(
-                timeout=timeout, transport=self._transport
+                timeout=timeout, transport=self._transport, trust_env=self._trust_env
             ) as client:
                 response = await client.post(self._url, headers=headers, json=payload)
                 response.raise_for_status()

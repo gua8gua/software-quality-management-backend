@@ -156,3 +156,8 @@ TLR_TABLES = [
         TlrEvaluation,
     )
 ]
+
+# Local SQLite/test initialization follows the complete TLR execution dependency graph.
+from app.modules.model_config.models import MODEL_CONFIG_TABLES  # noqa: E402
+
+TLR_TABLES = [*MODEL_CONFIG_TABLES, *TLR_TABLES]
