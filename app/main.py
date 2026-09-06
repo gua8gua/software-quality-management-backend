@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from app.api.middleware import RequestLoggingMiddleware
 from app.api.v1.router import api_router
@@ -25,6 +25,24 @@ logger = get_logger(__name__)
 app = FastAPI(title=settings.app_name, version="0.1.0")
 app.add_middleware(RequestLoggingMiddleware)
 app.include_router(api_router, prefix="/api/v1")
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def index():
+    return HTMLResponse("""<!doctype html><html lang="zh-CN"><meta charset="utf-8">
+    <title>软件质量管理后端</title><body>
+    <h1>软件质量管理后端已启动</h1>
+    <p>这里是 API 服务。项目资料库请打开前端开发服务器。</p>
+    <p><a href="http://localhost:5173">打开项目资料库（默认端口 5173）</a></p>
+    <p><a href="/docs">API 文档</a> ·
+    <a href="/api/v1/tlr/projects?tenant_id=local">检查 local 工作空间项目</a></p>
+    <p>服务启动不代表数据库连接已通过，请使用上述项目接口检查。</p>
+    </body></html>""")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
 
 
 @app.exception_handler(AppError)
@@ -58,9 +76,7 @@ async def handle_validation_error(_request: Request, exc: RequestValidationError
 @app.exception_handler(Exception)
 async def handle_unexpected_error(_request: Request, exc: Exception) -> JSONResponse:
     # 完整堆栈 + 异常类型 + 上下文
-    logger.exception(
-        "UNHANDLED_ERROR | type=%s | path=%s", type(exc).__name__, _request.url.path
-    )
+    logger.exception("UNHANDLED_ERROR | type=%s | path=%s", type(exc).__name__, _request.url.path)
     return JSONResponse(
         status_code=ErrorCode.SERVER_ERROR.http_status,
         content={

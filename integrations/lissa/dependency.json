@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/ArDoCo/Replication-Package-ICSE25_LiSSA-Toward-Generic-Traceability-Link-Recovery-through-RAG",
+  "commit": "a8e652f29bbdcc4bdcd3d98cd85aa4a37cb65480",
+  "source_directory": "LiSSA-RATLR-V2/lissa",
+  "maven_coordinates": "edu.kit.kastel.sdq.lissa:ratlr:0.2.0-SNAPSHOT",
+  "java": 21,
+  "license": "MIT (upstream source); transitive dependencies retain their own licenses",
+  "runtime_use": "Optional original ElementStore cosine Top-k retrieval via LissaRetrievalBridge",
+  "adapted_stages": "Python snapshot/chunk preprocessing, existing embedding and LLM providers, strict JSON pair classification, any-positive artifact aggregation, SQL persistence",
+  "reproduction_status": "Backend adaptation, not a reproduction of paper performance or every original preprocessor"
+}
