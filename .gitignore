@@ -15,3 +15,14 @@ tmp/
 # 本地联调用的临时测试脚本，不入库
 test_rerank.sh
 
+# Reproducible source dependencies, research downloads and run artifacts
+vendor/
+artifacts/
+outputs/
+*.sqlite
+*.sqlite3
+*.db
+target/
+.idea/
+.vscode/
+

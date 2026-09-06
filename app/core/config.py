@@ -52,6 +52,19 @@ class Settings(BaseSettings):
     rerank_chunk_max_chars: int = Field(default=1000, gt=0)
     rerank_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
 
+    # TLR module limits; Java dependency is optional and explicitly selected per run.
+    tlr_run_timeout_seconds: float = Field(default=1800, gt=0)
+    tlr_max_elements: int = Field(default=5000, gt=0)
+    tlr_max_candidates: int = Field(default=20_000, gt=0)
+    tlr_max_comparisons: int = Field(default=2_000_000, gt=0)
+    tlr_retrieval_timeout_seconds: float = Field(default=120, gt=0)
+    tlr_lissa_jar: str = (
+        "vendor/lissa/LiSSA-RATLR-V2/lissa/target/"
+        "ratlr-0.2.0-SNAPSHOT-jar-with-dependencies.jar"
+    )
+    tlr_lissa_bridge_dir: str = "artifacts/lissa/bridge"
+    tlr_java_command: str = "java"
+
     @model_validator(mode="after")
     def validate_chunking(self) -> "Settings":
         if self.chunk_overlap >= self.chunk_size:
