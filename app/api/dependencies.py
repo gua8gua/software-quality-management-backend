@@ -24,7 +24,6 @@ from app.services.document_service import DocumentService
 from app.services.indexing_service import IndexingService
 from app.services.knowledge_base_service import KnowledgeBaseService
 from app.services.rag_service import RagService
-from app.services.requirement_extraction_service import RequirementExtractionService
 from app.utils.text_splitter import CharacterTextSplitter, TextSplitter
 
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
@@ -51,12 +50,6 @@ def get_llm_provider(settings: SettingsDep) -> LLMProvider:
         model=settings.llm_model,
         timeout_seconds=settings.llm_timeout_seconds,
     )
-
-
-def get_requirement_extraction_service(
-    llm_provider: Annotated[LLMProvider, Depends(get_llm_provider)],
-) -> RequirementExtractionService:
-    return RequirementExtractionService(llm_provider)
 
 
 def get_rerank_provider(
@@ -138,3 +131,4 @@ def get_rag_service(
         rerank_enabled=settings.rerank_enabled,
         rerank_top_n=settings.rerank_top_n,
     )
+

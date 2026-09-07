@@ -88,7 +88,6 @@ uvicorn app.main:app --reload
 - `POST /api/v1/knowledge-bases/create`
 - `POST /api/v1/documents/upload`
 - `POST /api/v1/rag/retrieve`
-- `POST /api/v1/requirements/extract`：从文档片段中抽取结构化需求（当前返回结果，尚未持久化）
 
 后续建议按软件质量管理语义逐步改成：
 

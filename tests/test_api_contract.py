@@ -1,7 +1,7 @@
 from app.main import app
 
 
-def test_business_endpoints_are_exposed() -> None:
+def test_only_three_business_endpoints_are_exposed() -> None:
     operations = {
         (method.upper(), path)
         for path, path_item in app.openapi()["paths"].items()
@@ -12,7 +12,6 @@ def test_business_endpoints_are_exposed() -> None:
         ("POST", "/api/v1/knowledge-bases/create"),
         ("POST", "/api/v1/documents/upload"),
         ("POST", "/api/v1/rag/retrieve"),
-        ("POST", "/api/v1/requirements/extract"),
     }
 
 
