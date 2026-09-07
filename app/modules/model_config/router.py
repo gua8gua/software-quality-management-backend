@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from app.api.dependencies import SessionDep, SettingsDep
-from app.modules.model_config.schemas import BindingInput, BindingView, ConfigView, ConnectionInput, ConnectionView
+from app.modules.model_config.schemas import BindingInput, BindingView, ConfigView, ConnectionInput, ConnectionView, ModelItem, ModelMetadataInput
 from app.modules.model_config.service import ModelConfigService
 from app.schemas.common import ApiResponse
 
@@ -30,6 +30,11 @@ async def update_connection(connection_id: str, tenant_id: Tenant, request: Conn
 @router.post("/connections/{connection_id}/refresh", response_model=ApiResponse[ConnectionView])
 async def refresh_connection(connection_id: str, tenant_id: Tenant, session: SessionDep, settings: SettingsDep):
     return ApiResponse(data=await ModelConfigService(session, settings).refresh_by_id(tenant_id, connection_id))
+
+
+@router.put("/connections/{connection_id}/models/{model_id:path}", response_model=ApiResponse[ModelItem])
+async def update_model_metadata(connection_id: str, model_id: str, tenant_id: Tenant, request: ModelMetadataInput, session: SessionDep, settings: SettingsDep):
+    return ApiResponse(data=await ModelConfigService(session, settings).update_model_metadata(tenant_id, connection_id, model_id, request))
 
 
 @router.delete("/connections/{connection_id}", response_model=ApiResponse[bool])

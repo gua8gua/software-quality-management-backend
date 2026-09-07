@@ -20,6 +20,7 @@ from app.modules.tlr.models import (
     TlrDataset,
     TlrElement,
     TlrFile,
+    TlrHierarchyNode,
     TlrLink,
     TlrProject,
     TlrRun,
@@ -33,12 +34,16 @@ from app.modules.tlr.schemas import (
     Contract,
     DatasetInput,
     DatasetView,
+    HierarchyNodeInput,
+    HierarchyNodeView,
     Identifier,
     LinkView,
     Page,
     RunView,
+    VisualizationProjectionInput,
 )
 from app.modules.tlr.uploads import KINDS, MAX_BYTES, TEXT_EXTENSIONS, extract_text
+from app.modules.tlr.visualization import project_hierarchy
 from app.schemas.common import ApiResponse
 
 router = APIRouter(prefix="/tlr", tags=["project-console"])
@@ -267,6 +272,17 @@ async def inventory(
     )
 
 
+@router.get("/datasets/{dataset_id}/hierarchy", response_model=ApiResponse[list[HierarchyNodeView]])
+async def hierarchy(dataset_id: str, tenant_id: Scope, project_id: Scope, session: SessionDep):
+    await TlrRepository(session).dataset(dataset_id, tenant_id, project_id)
+    rows = await session.scalars(
+        select(TlrHierarchyNode)
+        .where(TlrHierarchyNode.dataset_id == dataset_id)
+        .order_by(TlrHierarchyNode.ordinal, TlrHierarchyNode.node_key)
+    )
+    return ApiResponse(data=[HierarchyNodeView.model_validate(row) for row in rows])
+
+
 async def scoped_artifact(session, artifact_id, tenant_id, project_id):
     row = await session.scalar(
         select(TlrArtifact)
@@ -325,10 +341,12 @@ async def upload(
             raise ValueError("每个文件都必须有对应的类型、标识和版本，单批最多 50 个")
         if len({i.external_id for i in items}) != len(items):
             raise ValueError("本批次文件标识重复")
-        previous, original_ids = {}, {}
+        previous, original_ids, previous_hierarchy = {}, {}, []
         if base_dataset_id:
             await service.repo.dataset(base_dataset_id, tenant_id, project_id)
-            for artifact in await service.repo.artifacts(base_dataset_id):
+            base_artifacts = await service.repo.artifacts(base_dataset_id)
+            base_external_by_id = {artifact.id: artifact.external_id for artifact in base_artifacts}
+            for artifact in base_artifacts:
                 previous[artifact.external_id] = ArtifactInput(
                     external_id=artifact.external_id,
                     kind=artifact.kind,
@@ -338,6 +356,24 @@ async def upload(
                     structure=artifact.structure,
                 )
                 original_ids[artifact.external_id] = artifact.original_file_id
+            base_nodes = list(
+                await session.scalars(
+                    select(TlrHierarchyNode).where(TlrHierarchyNode.dataset_id == base_dataset_id)
+                )
+            )
+            key_by_id = {node.id: node.node_key for node in base_nodes}
+            previous_hierarchy = [
+                HierarchyNodeInput(
+                    node_key=node.node_key,
+                    parent_key=key_by_id.get(node.parent_id),
+                    artifact_external_id=base_external_by_id.get(node.artifact_id),
+                    title=node.title,
+                    node_type=node.node_type,
+                    ordinal=node.ordinal,
+                    metadata=node.metadata_json,
+                )
+                for node in base_nodes
+            ]
         size = 0
         uploaded = []
         for file, item in zip(files, items, strict=True):
@@ -370,6 +406,19 @@ async def upload(
                     ),
                 )
             )
+            if previous_hierarchy and not any(
+                node.artifact_external_id == item.external_id for node in previous_hierarchy
+            ):
+                previous_hierarchy.append(
+                    HierarchyNodeInput(
+                        node_key=f"artifact:{item.external_id}",
+                        artifact_external_id=item.external_id,
+                        title=item.external_id,
+                        node_type="artifact",
+                        ordinal=len(previous_hierarchy),
+                        metadata={"source": "local-upload"},
+                    )
+                )
         request = DatasetInput(
             tenant_id=tenant_id,
             project_id=project_id,
@@ -381,6 +430,7 @@ async def upload(
                 "kind_assignment": "user",
             },
             artifacts=list(previous.values()),
+            hierarchy=previous_hierarchy,
         )
         dataset = await service.import_dataset(request, commit=False)
         for external_id, original in uploaded:
@@ -406,8 +456,36 @@ async def upload(
 
 @router.get("/runs/{run_id}/visualization", response_model=ApiResponse[dict])
 async def visualization(run_id: str, tenant_id: Scope, project_id: Scope, session: SessionDep):
+    return ApiResponse(
+        data=await _visualization_data(run_id, tenant_id, project_id, session, [], [])
+    )
+
+
+@router.post("/runs/{run_id}/visualization/projection", response_model=ApiResponse[dict])
+async def visualization_projection(
+    run_id: str,
+    request: VisualizationProjectionInput,
+    tenant_id: Scope,
+    project_id: Scope,
+    session: SessionDep,
+):
+    return ApiResponse(
+        data=await _visualization_data(
+            run_id,
+            tenant_id,
+            project_id,
+            session,
+            request.collapsed_source,
+            request.collapsed_target,
+        )
+    )
+
+
+async def _visualization_data(
+    run_id, tenant_id, project_id, session, collapsed_source, collapsed_target
+):
     repo = TlrRepository(session)
-    await repo.run(run_id, tenant_id, project_id)
+    run = await repo.run(run_id, tenant_id, project_id)
     elements = await session.execute(
         select(
             TlrElement.id, TlrElement.artifact_id, TlrElement.external_id, TlrElement.role
@@ -424,13 +502,30 @@ async def visualization(run_id: str, tenant_id: Scope, project_id: Scope, sessio
         ).where(TlrCandidate.run_id == run_id)
     )
     links = await repo.rows(TlrLink, run_id)
-    return ApiResponse(
-        data={
-            "elements": [dict(r) for r in elements.mappings()],
-            "candidates": [dict(r) for r in candidates.mappings()],
-            "links": [LinkView.model_validate(r).model_dump() for r in links],
-        }
+    artifacts = list(
+        await session.scalars(select(TlrArtifact).where(TlrArtifact.dataset_id == run.dataset_id))
     )
+    by_external_id = {artifact.external_id: artifact.id for artifact in artifacts}
+    hierarchy_nodes = list(
+        await session.scalars(
+            select(TlrHierarchyNode).where(TlrHierarchyNode.dataset_id == run.dataset_id)
+        )
+    )
+    projection = project_hierarchy(
+        hierarchy_nodes,
+        links,
+        [by_external_id[value] for value in run.config["source_ids"] if value in by_external_id],
+        [by_external_id[value] for value in run.config["target_ids"] if value in by_external_id],
+        {"source": set(collapsed_source), "target": set(collapsed_target)},
+    )
+    return {
+        "elements": [dict(r) for r in elements.mappings()],
+        "candidates": [dict(r) for r in candidates.mappings()],
+        "links": [LinkView.model_validate(r).model_dump() for r in links],
+        "hierarchy": [HierarchyNodeView.model_validate(r).model_dump() for r in hierarchy_nodes],
+        "projection": projection,
+        "failures": run.manifest.get("node_failures", []),
+    }
 
 
 @router.get("/runs/{run_id}/candidates/{candidate_id}", response_model=ApiResponse[dict])

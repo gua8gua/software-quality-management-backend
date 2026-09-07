@@ -22,6 +22,7 @@ outputs/
 *.sqlite
 *.sqlite3
 *.db
+.model-config.key
 target/
 .idea/
 .vscode/

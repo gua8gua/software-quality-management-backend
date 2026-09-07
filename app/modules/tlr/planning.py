@@ -1,13 +1,16 @@
 """Layer matrix planning. A cell is an independently reproducible directed TLR run."""
 
+from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter
 from pydantic import Field, model_validator
+from sqlalchemy import select
 
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
 from app.modules.tlr.router import Scope, Service
+from app.modules.tlr.models import TlrRun
 from app.modules.tlr.schemas import Contract, Identifier, RunInput, RunOptions, RunView
 from app.schemas.common import ApiResponse
 
@@ -116,9 +119,10 @@ async def create_plan(request: PlanInput, service: Service):
     if any(not groups[a] or not groups[b] for a, b in pairs):
         raise AppError(ErrorCode.DATA_INVALID, "所选层没有可分析的正文；引用节点和包节点不参与检测")
     plan_id = str(uuid4())
+    batch_label = f"TLR-{datetime.now().astimezone():%Y%m%d-%H%M%S}-{plan_id[:8]}"
     runs = []
     try:
-        for source, target in pairs:
+        for batch_index, (source, target) in enumerate(pairs):
             run = await service.create_run(
                 RunInput(
                     tenant_id=request.tenant_id,
@@ -128,6 +132,8 @@ async def create_plan(request: PlanInput, service: Service):
                     target_ids=groups[target],
                     options=request.options,
                     plan_id=plan_id,
+                    batch_label=batch_label,
+                    batch_index=batch_index,
                     layer_pair=[source, target],
                 ),
                 commit=False,
@@ -140,8 +146,76 @@ async def create_plan(request: PlanInput, service: Service):
     return ApiResponse(
         data={
             "plan_id": plan_id,
+            "batch_id": plan_id,
+            "batch_label": batch_label,
             "runs": [RunView.model_validate(r).model_dump(mode="json") for r in runs],
             "excluded_ids": inventory["excluded_ids"],
             "default_policy": inventory["default_policy"],
+        }
+    )
+
+
+async def _plan_runs(plan_id: str, tenant_id: str, project_id: str, service: Service):
+    rows = list(
+        await service.session.scalars(
+            select(TlrRun)
+            .where(TlrRun.tenant_id == tenant_id, TlrRun.project_id == project_id)
+            .order_by(TlrRun.created_at, TlrRun.id)
+        )
+    )
+    runs = [row for row in rows if (row.config or {}).get("plan_id") == plan_id]
+    if not runs:
+        raise AppError(ErrorCode.NOT_FOUND, "TLR 批次不存在")
+    layer_order = {name: index for index, (name, _label) in enumerate(LAYERS)}
+    runs.sort(
+        key=lambda row: (
+            (row.config or {}).get("batch_index", 10_000),
+            layer_order.get(((row.config or {}).get("layer_pair") or [""])[0], 10_000),
+            row.id,
+        )
+    )
+    return runs
+
+
+@router.get("/plans/{plan_id}/runs", response_model=ApiResponse[dict])
+async def plan_runs(plan_id: str, tenant_id: Scope, project_id: Scope, service: Service):
+    runs = await _plan_runs(plan_id, tenant_id, project_id, service)
+    return ApiResponse(
+        data={
+            "batch_id": plan_id,
+            "batch_label": (runs[0].config or {}).get("batch_label") or f"批次 {plan_id[:8]}",
+            "runs": [RunView.model_validate(row).model_dump(mode="json") for row in runs],
+        }
+    )
+
+
+@router.post("/plans/{plan_id}/resume", response_model=ApiResponse[dict])
+async def resume_plan(plan_id: str, tenant_id: Scope, project_id: Scope, service: Service):
+    runs = await _plan_runs(plan_id, tenant_id, project_id, service)
+    attempted, failures = [], []
+    for run in runs:
+        recoverable = (
+            run.status in {"failed", "completed"}
+            and run.stage in {"classification", "completed_with_errors"}
+            and (run.counts or {}).get("candidates", 0)
+            > (run.counts or {}).get("classified", 0)
+        )
+        try:
+            if run.status == "pending":
+                await service.execute(run.id, tenant_id, project_id)
+                attempted.append(run.id)
+            elif recoverable:
+                await service.resume(run.id, tenant_id, project_id)
+                attempted.append(run.id)
+        except AppError as exc:
+            failures.append({"run_id": run.id, "message": exc.message, "code": exc.code})
+    current = await _plan_runs(plan_id, tenant_id, project_id, service)
+    return ApiResponse(
+        data={
+            "batch_id": plan_id,
+            "batch_label": (current[0].config or {}).get("batch_label") or f"批次 {plan_id[:8]}",
+            "attempted_run_ids": attempted,
+            "failures": failures,
+            "runs": [RunView.model_validate(row).model_dump(mode="json") for row in current],
         }
     )

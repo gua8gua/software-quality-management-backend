@@ -11,7 +11,7 @@ from app.core.config import Settings
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
 from app.modules.model_config.models import ModelConnection, ModelTaskBinding
-from app.modules.model_config.schemas import BindingInput, BindingView, ConfigView, ConnectionInput, ConnectionView, TaskInfo
+from app.modules.model_config.schemas import BindingInput, BindingView, ConfigView, ConnectionInput, ConnectionView, ModelItem, ModelMetadataInput, ProviderOption, TaskInfo
 from app.modules.model_config.vault import CredentialVault
 from app.providers.embedding.openai_compatible import OpenAICompatibleEmbeddingProvider
 from app.providers.llm.openai_compatible import OpenAICompatibleLLMProvider
@@ -23,6 +23,12 @@ TASKS = [
     TaskInfo(id="architecture_extraction", label="架构结构抽取", description="将架构文档抽取为可追踪的结构单元。", capability="chat"),
 ]
 TASK_MAP = {task.id: task for task in TASKS}
+PROVIDERS = [
+    ProviderOption(id="deepseek", label="DeepSeek 官方 API", description="只需填写 DeepSeek API 密钥，地址由后端维护；当前用于对话任务。", default_base_url="https://api.deepseek.com", base_url_editable=False, api_key_required=True, is_local=False, capabilities=["chat"]),
+    ProviderOption(id="local_openai", label="本地 OpenAI 兼容服务", description="适用于 Ollama、vLLM、LM Studio 等本地推理服务，实际能力以任务实测为准。", default_base_url="http://127.0.0.1:11434/v1", base_url_editable=True, api_key_required=False, is_local=True, capabilities=["embedding", "chat"]),
+    ProviderOption(id="custom", label="其他 OpenAI 兼容 API", description="填写自建或其他云端兼容接口地址，实际能力以任务实测为准。", base_url_editable=True, api_key_required=True, is_local=False, capabilities=["embedding", "chat"]),
+]
+PROVIDER_MAP = {provider.id: provider for provider in PROVIDERS}
 
 
 def normalize_url(raw: str) -> tuple[str, bool]:
@@ -43,6 +49,35 @@ def normalize_url(raw: str) -> tuple[str, bool]:
     return urlunsplit((parsed.scheme, netloc, parsed.path.rstrip("/"), "", "")), local
 
 
+
+def ollama_native_root(base_url: str) -> str:
+    """Return the native Ollama root for an OpenAI-compatible /v1 URL."""
+    parsed = urlsplit(base_url.rstrip("/"))
+    path = parsed.path.rstrip("/")
+    if path.endswith("/v1"):
+        path = path[:-3]
+    return urlunsplit((parsed.scheme, parsed.netloc, path.rstrip("/"), "", ""))
+
+
+def ollama_model_metadata(payload: dict) -> dict:
+    native = payload.get("capabilities") if isinstance(payload.get("capabilities"), list) else []
+    mapping = {"completion": "chat", "embedding": "embedding", "vision": "vision"}
+    capabilities = sorted({mapping[item] for item in native if item in mapping}) or ["unknown"]
+    details = payload.get("details") if isinstance(payload.get("details"), dict) else {}
+    model_info = payload.get("model_info") if isinstance(payload.get("model_info"), dict) else {}
+    dimensions = [value for key, value in model_info.items() if key.endswith(".embedding_length") and isinstance(value, int)]
+    return {
+        "capabilities": capabilities,
+        "capability_source": "ollama",
+        "format": details.get("format"),
+        "family": details.get("family"),
+        "parameter_size": details.get("parameter_size"),
+        "quantization_level": details.get("quantization_level"),
+        "embedding_dimension": dimensions[0] if "embedding" in capabilities and dimensions else None,
+        "verification": {},
+    }
+
+
 class ModelConfigService:
     def __init__(self, session: AsyncSession, settings: Settings):
         self.session, self.settings, self.vault = session, settings, CredentialVault(settings)
@@ -50,10 +85,21 @@ class ModelConfigService:
     async def view(self, tenant: str) -> ConfigView:
         connections = list((await self.session.scalars(select(ModelConnection).where(ModelConnection.tenant_id == tenant).order_by(ModelConnection.name))).all())
         bindings = {row.task: row for row in (await self.session.scalars(select(ModelTaskBinding).where(ModelTaskBinding.tenant_id == tenant))).all()}
-        return ConfigView(connections=[self.connection_view(row) for row in connections], tasks=TASKS, bindings=[self.binding_view(task.id, bindings.get(task.id)) for task in TASKS])
+        return ConfigView(providers=PROVIDERS, connections=[self.connection_view(row) for row in connections], tasks=TASKS, bindings=[self.binding_view(task.id, bindings.get(task.id)) for task in TASKS])
 
     def connection_view(self, row: ModelConnection) -> ConnectionView:
-        return ConnectionView(id=row.id, name=row.name, provider=row.provider, base_url=row.base_url, is_local=row.is_local, api_key_configured=bool(row.api_key_ciphertext), models=row.models or [], status=row.status, status_message=row.status_message, last_checked_at=row.last_checked_at)
+        provider = PROVIDER_MAP.get(row.provider)
+        return ConnectionView(id=row.id, name=row.name, provider=row.provider, provider_label=provider.label if provider else "OpenAI 兼容 API", capabilities=provider.capabilities if provider else ["embedding", "chat"], base_url=row.base_url, is_local=row.is_local, api_key_configured=bool(row.api_key_ciphertext), models=row.models or [], status=row.status, status_message=row.status_message, last_checked_at=row.last_checked_at)
+
+    def resolve_provider(self, data: ConnectionInput) -> tuple[str, bool]:
+        provider = PROVIDER_MAP[data.provider]
+        raw_url = provider.default_base_url if not provider.base_url_editable else data.base_url
+        if not raw_url:
+            raise AppError(ErrorCode.DATA_INVALID, "该服务提供方必须填写 API 地址")
+        base_url, local = normalize_url(raw_url)
+        if data.provider == "local_openai" and not local:
+            raise AppError(ErrorCode.DATA_INVALID, "本地模型服务必须使用本机或私网地址")
+        return base_url, local
 
     def binding_view(self, task: str, row: ModelTaskBinding | None) -> BindingView:
         if row:
@@ -62,11 +108,11 @@ class ModelConfigService:
         return BindingView(task=task, fallback={"source": ".env", "base_url": self.settings.model_base_url if embedding else self.settings.llm_base_url, "model_id": self.settings.embedding_model if embedding else self.settings.llm_model, "api_key_configured": bool(self.settings.model_api_key if embedding else self.settings.llm_api_key)})
 
     async def create(self, tenant: str, data: ConnectionInput) -> ConnectionView:
-        base_url, local = normalize_url(data.base_url)
+        base_url, local = self.resolve_provider(data)
         secret = data.api_key.get_secret_value().strip() if data.api_key else ""
         if not local and not secret:
             raise AppError(ErrorCode.LLM_CONFIG_ERROR, "远程模型连接必须填写 API 密钥")
-        row = ModelConnection(tenant_id=tenant, name=data.name.strip(), base_url=base_url, is_local=local, api_key_ciphertext=self.vault.encrypt(secret))
+        row = ModelConnection(tenant_id=tenant, name=data.name.strip(), provider=data.provider, base_url=base_url, is_local=local, api_key_ciphertext=self.vault.encrypt(secret))
         self.session.add(row)
         await self.session.commit(); await self.session.refresh(row)
         await self.refresh(row)
@@ -74,7 +120,7 @@ class ModelConfigService:
 
     async def update(self, tenant: str, connection_id: str, data: ConnectionInput) -> ConnectionView:
         row = await self._connection(tenant, connection_id)
-        row.base_url, row.is_local = normalize_url(data.base_url); row.name = data.name.strip()
+        row.base_url, row.is_local = self.resolve_provider(data); row.name = data.name.strip(); row.provider = data.provider
         if data.api_key is not None and data.api_key.get_secret_value().strip():
             row.api_key_ciphertext = self.vault.encrypt(data.api_key.get_secret_value().strip())
         if not row.is_local and not row.api_key_ciphertext:
@@ -92,9 +138,28 @@ class ModelConfigService:
             async with httpx.AsyncClient(timeout=self.settings.model_timeout_seconds, follow_redirects=False, trust_env=not row.is_local) as client:
                 response = await client.get(f"{row.base_url}/models", headers={"Authorization": f"Bearer {key}"})
                 response.raise_for_status(); payload = response.json()
-            items = payload.get("data")
-            if not isinstance(items, list): raise ValueError("data is not a list")
-            row.models = sorted([{"id": str(item["id"]), "owned_by": str(item.get("owned_by", "unknown"))} for item in items if isinstance(item, dict) and item.get("id")], key=lambda item: item["id"])
+                items = payload.get("data")
+                if not isinstance(items, list): raise ValueError("data is not a list")
+                previous = {item.get("id"): item for item in (row.models or []) if isinstance(item, dict)}
+                models = []
+                for item in items:
+                    if not isinstance(item, dict) or not item.get("id"): continue
+                    model_id = str(item["id"])
+                    metadata = {"capabilities": ["chat"], "capability_source": "provider", "verification": {}} if row.provider == "deepseek" else {"capabilities": ["unknown"], "capability_source": "unknown", "verification": {}}
+                    if row.provider == "local_openai":
+                        try:
+                            detail = await client.post(f"{ollama_native_root(row.base_url)}/api/show", json={"model": model_id, "verbose": False})
+                            detail.raise_for_status()
+                            metadata = ollama_model_metadata(detail.json())
+                        except (httpx.HTTPError, ValueError, TypeError):
+                            pass
+                    old = previous.get(model_id, {})
+                    if old.get("capability_source") == "manual":
+                        metadata["capabilities"] = old.get("capabilities", ["unknown"])
+                        metadata["capability_source"] = "manual"
+                    metadata["verification"] = old.get("verification", {})
+                    models.append({"id": model_id, "owned_by": str(item.get("owned_by", "unknown")), **metadata})
+            row.models = sorted(models, key=lambda item: item["id"])
             row.status, row.status_message = "available", f"已读取 {len(row.models)} 个模型"
         except (httpx.HTTPError, ValueError, TypeError) as exc:
             row.models = []; row.status = "unavailable"; row.status_message = self._safe_error(exc)
@@ -104,15 +169,21 @@ class ModelConfigService:
         info = TASK_MAP.get(task)
         if not info: raise AppError(ErrorCode.DATA_INVALID, "未知模型任务")
         connection = await self._connection(tenant, data.connection_id)
-        if connection.models and data.model_id not in {item["id"] for item in connection.models}:
+        if info.capability not in self.connection_view(connection).capabilities:
+            raise AppError(ErrorCode.DATA_INVALID, "该服务提供方不支持此任务所需的模型能力")
+        model = next((item for item in (connection.models or []) if item["id"] == data.model_id), None)
+        if connection.models and model is None:
             raise AppError(ErrorCode.DATA_INVALID, "所选模型不在当前连接的可用目录中")
-        if info.capability == "embedding" and data.dimension is None:
+        if model and "unknown" not in model.get("capabilities", ["unknown"]) and info.capability not in model.get("capabilities", []):
+            raise AppError(ErrorCode.DATA_INVALID, "所选模型不支持该任务需要的能力")
+        dimension = data.dimension or (model.get("embedding_dimension") if model else None)
+        if info.capability == "embedding" and dimension is None:
             raise AppError(ErrorCode.DATA_INVALID, "向量模型必须填写输出维度")
         key = (tenant, task); row = await self.session.get(ModelTaskBinding, key)
         if row is None:
-            row = ModelTaskBinding(tenant_id=tenant, task=task, connection_id=data.connection_id, model_id=data.model_id, dimension=data.dimension); self.session.add(row)
+            row = ModelTaskBinding(tenant_id=tenant, task=task, connection_id=data.connection_id, model_id=data.model_id, dimension=dimension); self.session.add(row)
         else:
-            row.connection_id, row.model_id, row.dimension = data.connection_id, data.model_id, data.dimension; row.test_status = "untested"; row.test_message = ""
+            row.connection_id, row.model_id, row.dimension = data.connection_id, data.model_id, dimension; row.test_status = "untested"; row.test_message = ""
         await self.session.commit(); await self.session.refresh(row); return self.binding_view(task, row)
 
     async def test(self, tenant: str, task: str) -> BindingView:
@@ -130,7 +201,38 @@ class ModelConfigService:
             row.test_status = "passed"
         except Exception as exc:
             row.test_status, message = "failed", self._safe_error(exc)
+        capability = TASK_MAP[task].capability
+        models = []
+        for item in connection.models or []:
+            current = dict(item)
+            if current.get("id") == row.model_id:
+                verification = dict(current.get("verification") or {})
+                verification[capability] = row.test_status
+                current["verification"] = verification
+                if row.test_status == "passed" and capability not in current.get("capabilities", []):
+                    current["capabilities"] = sorted((set(current.get("capabilities", [])) - {"unknown"}) | {capability})
+                    if current.get("capability_source") == "unknown": current["capability_source"] = "probe"
+            models.append(current)
+        connection.models = models
         row.test_message, row.last_tested_at = message, datetime.now(UTC); await self.session.commit(); await self.session.refresh(row); return self.binding_view(task, row)
+
+    async def update_model_metadata(self, tenant: str, connection_id: str, model_id: str, data: ModelMetadataInput) -> ModelItem:
+        connection = await self._connection(tenant, connection_id)
+        models = []
+        updated = None
+        capabilities = sorted(set(data.capabilities) - {"unknown"}) or ["unknown"]
+        for item in connection.models or []:
+            current = dict(item)
+            if current.get("id") == model_id:
+                current["capabilities"] = capabilities
+                current["capability_source"] = "manual"
+                updated = current
+            models.append(current)
+        if updated is None:
+            raise AppError(ErrorCode.DATA_NOT_FOUND, "模型不在当前连接的可用目录中")
+        connection.models = models
+        await self.session.commit()
+        return ModelItem.model_validate(updated)
 
     async def unbind(self, tenant: str, task: str) -> BindingView:
         if task not in TASK_MAP:
@@ -168,5 +270,8 @@ class ModelConfigService:
         if isinstance(exc, httpx.HTTPStatusError): return f"服务返回 HTTP {exc.response.status_code}"
         if isinstance(exc, httpx.TimeoutException): return "连接超时"
         if isinstance(exc, httpx.HTTPError): return "无法连接模型服务"
-        if isinstance(exc, AppError): return exc.message
+        if isinstance(exc, AppError):
+            if isinstance(exc.data, dict) and isinstance(exc.data.get("reason"), str):
+                return exc.data["reason"][:300]
+            return exc.message
         return "响应格式或模型输出不符合要求"

@@ -19,12 +19,23 @@ class ArtifactInput(Contract):
     structure: dict = Field(default_factory=dict)
 
 
+class HierarchyNodeInput(Contract):
+    node_key: Annotated[str, Field(min_length=1, max_length=256, pattern=r"\S")]
+    parent_key: Annotated[str | None, Field(max_length=256)] = None
+    artifact_external_id: Identifier | None = None
+    title: str = Field(min_length=1, max_length=500, pattern=r"\S")
+    node_type: Annotated[str, Field(min_length=1, max_length=64)] = "group"
+    ordinal: int = Field(default=0, ge=0)
+    metadata: dict = Field(default_factory=dict)
+
+
 class DatasetInput(Contract):
     tenant_id: Identifier
     project_id: Identifier
     version: Identifier
     provenance: dict = Field(default_factory=dict)
     artifacts: list[ArtifactInput] = Field(min_length=1, max_length=5000)
+    hierarchy: list[HierarchyNodeInput] = Field(default_factory=list, max_length=20_000)
 
     @model_validator(mode="after")
     def unique_ids(self):
@@ -33,6 +44,46 @@ class DatasetInput(Contract):
             raise ValueError("external_id must be unique within a dataset snapshot")
         if sum(len(a.content) for a in self.artifacts) > 20_000_000:
             raise ValueError("dataset exceeds 20 million characters")
+        node_keys = [node.node_key for node in self.hierarchy]
+        if len(node_keys) != len(set(node_keys)):
+            raise ValueError("hierarchy node_key must be unique within a dataset snapshot")
+        known_nodes = set(node_keys)
+        known_artifacts = set(ids)
+        if any(node.parent_key and node.parent_key not in known_nodes for node in self.hierarchy):
+            raise ValueError("hierarchy parent_key must reference a node in the same snapshot")
+        if any(
+            node.artifact_external_id and node.artifact_external_id not in known_artifacts
+            for node in self.hierarchy
+        ):
+            raise ValueError("hierarchy artifact reference must belong to the same snapshot")
+        if self.hierarchy:
+            references = [
+                node.artifact_external_id
+                for node in self.hierarchy
+                if node.artifact_external_id is not None
+            ]
+            if len(references) != len(set(references)):
+                raise ValueError("each artifact may be represented by only one hierarchy node")
+            semantic = {
+                artifact.external_id
+                for artifact in self.artifacts
+                if artifact.kind != "package"
+                and artifact.structure.get("content_status") != "reference_only"
+            }
+            if set(references) != semantic:
+                raise ValueError(
+                    "hierarchy must represent every semantic artifact exactly once and must not "
+                    "attach reference-only artifacts"
+                )
+        parents = {node.node_key: node.parent_key for node in self.hierarchy}
+        for key in node_keys:
+            seen = set()
+            current = key
+            while current is not None:
+                if current in seen:
+                    raise ValueError("hierarchy must not contain a parent cycle")
+                seen.add(current)
+                current = parents.get(current)
         return self
 
 
@@ -51,6 +102,23 @@ class ArtifactView(ArtifactInput):
     dataset_id: str
     sha256: str
     original_file_id: str | None = None
+
+
+class HierarchyNodeView(Contract):
+    id: str
+    dataset_id: str
+    parent_id: str | None
+    artifact_id: str | None
+    node_key: str
+    title: str
+    node_type: str
+    ordinal: int
+    metadata_json: dict
+
+
+class VisualizationProjectionInput(Contract):
+    collapsed_source: list[str] = Field(default_factory=list, max_length=20_000)
+    collapsed_target: list[str] = Field(default_factory=list, max_length=20_000)
 
 
 Strategy = Literal[
@@ -74,6 +142,7 @@ class RunOptions(Contract):
     code_language: Literal["auto", "java", "python"] = "auto"
     chunk_size: int = Field(default=2000, ge=100, le=20_000)
     max_element_chars: int = Field(default=30_000, ge=100, le=100_000)
+    max_consecutive_failures: int = Field(default=5, ge=1, le=100)
     # Explicit backend adaptation; not a claim of original LiSSA numerical equivalence.
     retrieval_backend: Literal["python", "lissa"] = "python"
 
@@ -86,6 +155,8 @@ class RunInput(Contract):
     target_ids: list[Identifier] = Field(min_length=1, max_length=5000)
     options: RunOptions = Field(default_factory=RunOptions)
     plan_id: str | None = None
+    batch_label: str | None = Field(default=None, max_length=128)
+    batch_index: int | None = Field(default=None, ge=0)
     layer_pair: list[str] = Field(default_factory=list, max_length=2)
 
     @model_validator(mode="after")

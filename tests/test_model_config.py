@@ -3,7 +3,11 @@ from cryptography.fernet import Fernet
 from app.api.middleware import _preview_body
 from app.core.config import Settings
 from app.core.exceptions import AppError
-from app.modules.model_config.service import normalize_url
+from app.modules.model_config.service import (
+    normalize_url,
+    ollama_model_metadata,
+    ollama_native_root,
+)
 from app.modules.model_config.vault import CredentialVault
 
 
@@ -35,3 +39,32 @@ def test_vault_encrypts_credentials_and_request_log_redacts_them(tmp_path):
     preview = _preview_body(b'{"name":"cloud","api_key":"top-secret"}')
     assert "top-secret" not in preview
     assert "<redacted>" in preview
+
+
+def test_ollama_model_capabilities_and_embedding_dimension_are_mapped():
+    assert ollama_native_root("http://127.0.0.1:11434/v1") == "http://127.0.0.1:11434"
+    metadata = ollama_model_metadata(
+        {
+            "capabilities": ["embedding"],
+            "details": {
+                "family": "bert",
+                "parameter_size": "300M",
+                "quantization_level": "F16",
+            },
+            "model_info": {"bert.embedding_length": 768},
+        }
+    )
+    assert metadata["capabilities"] == ["embedding"]
+    assert metadata["embedding_dimension"] == 768
+    assert metadata["capability_source"] == "ollama"
+
+
+def test_ollama_internal_embedding_length_does_not_misclassify_chat_model():
+    metadata = ollama_model_metadata(
+        {
+            "capabilities": ["completion"],
+            "model_info": {"llama.embedding_length": 4096},
+        }
+    )
+    assert metadata["capabilities"] == ["chat"]
+    assert metadata["embedding_dimension"] is None

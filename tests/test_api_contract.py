@@ -38,6 +38,7 @@ def test_business_endpoints_are_explicit() -> None:
             ("POST", "/api/v1/model-config/connections"),
             ("PUT", "/api/v1/model-config/connections/{connection_id}"),
             ("POST", "/api/v1/model-config/connections/{connection_id}/refresh"),
+            ("PUT", "/api/v1/model-config/connections/{connection_id}/models/{model_id}"),
             ("DELETE", "/api/v1/model-config/connections/{connection_id}"),
             ("PUT", "/api/v1/model-config/tasks/{task}"),
             ("POST", "/api/v1/model-config/tasks/{task}/test"),

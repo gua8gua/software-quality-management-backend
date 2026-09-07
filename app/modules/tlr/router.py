@@ -85,6 +85,13 @@ async def execute_run(run_id: str, tenant_id: Scope, project_id: Scope, service:
     )
 
 
+@router.post("/runs/{run_id}/resume", response_model=ApiResponse[RunView])
+async def resume_run(run_id: str, tenant_id: Scope, project_id: Scope, service: Service):
+    return ApiResponse(
+        data=RunView.model_validate(await service.resume(run_id, tenant_id, project_id))
+    )
+
+
 @router.get("/runs/{run_id}", response_model=ApiResponse[RunView])
 async def get_run(run_id: str, tenant_id: Scope, project_id: Scope, session: SessionDep):
     return ApiResponse(

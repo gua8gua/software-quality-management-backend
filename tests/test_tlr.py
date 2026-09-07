@@ -16,7 +16,7 @@ from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.main import app
 from app.modules.tlr.importers import read_collection, read_gold
-from app.modules.tlr.models import TLR_TABLES, TlrCandidate, TlrLink, TlrRun
+from app.modules.tlr.models import TLR_TABLES, TlrCandidate, TlrElement, TlrLink, TlrRun
 from app.modules.tlr.pipeline import LissaRetriever, PythonRetriever, validate_vectors
 from app.providers.embedding.base import EmbeddingProvider
 from app.providers.llm.base import LLMProvider
@@ -24,8 +24,13 @@ from app.providers.llm.base import LLMProvider
 
 class TestEmbedding(EmbeddingProvider):
     __test__ = False
+    calls = 0
+    fail_text = None
 
     async def embed(self, texts):
+        type(self).calls += len(texts)
+        if self.fail_text and any(self.fail_text in text for text in texts):
+            raise RuntimeError("fixture rejected one element")
         return [[1.0, 0.0] if "login" in t else [0.0, 1.0] for t in texts]
 
 
@@ -53,6 +58,8 @@ class TestLLM(LLMProvider):
 
 @pytest_asyncio.fixture
 async def api(tmp_path):
+    TestEmbedding.calls = 0
+    TestEmbedding.fail_text = None
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'tlr.sqlite'}")
 
     @event.listens_for(engine.sync_engine, "connect")
@@ -172,21 +179,109 @@ async def test_http_pipeline_persists_and_aggregates_with_scope_isolation(api):
     assert len(page.json()["data"]["items"]) == 1
 
 
-async def test_invalid_model_output_preserves_partial_evidence_and_failed_status(api):
+async def test_embedding_cache_reuses_unchanged_content_and_encodes_new_input(api):
+    client, _, _ = api
+    first_run, _ = await create_run(client)
+    first_response = await client.post(
+        f"/api/v1/tlr/runs/{first_run}/execute", params=SCOPE
+    )
+    assert first_response.status_code == 200
+    assert TestEmbedding.calls == 4
+
+    payload = dataset_payload()
+    payload["version"] = "v2"
+    payload["artifacts"].append(
+        {
+            "external_id": "C3",
+            "kind": "code",
+            "revision": "v2",
+            "content": "render image",
+        }
+    )
+    dataset = (await client.post("/api/v1/tlr/datasets", json=payload)).json()["data"]
+    created = await client.post(
+        "/api/v1/tlr/runs",
+        json={
+            **SCOPE,
+            "dataset_id": dataset["id"],
+            "source_ids": ["R1"],
+            "target_ids": ["C1", "C2", "C3"],
+            "options": {"top_k": 3, "source_preprocessor": "chunk", "chunk_size": 100},
+        },
+    )
+    second_run = created.json()["data"]["id"]
+    response = await client.post(f"/api/v1/tlr/runs/{second_run}/execute", params=SCOPE)
+    assert response.status_code == 200, response.text
+    assert TestEmbedding.calls == 5
+    assert response.json()["data"]["manifest"]["embedding_cache"] == {
+        "reused": 4,
+        "encoded": 1,
+        "key": "project + artifact_external_id + content_sha256 + embedding_endpoint/model",
+    }
+
+
+async def test_embedding_batch_falls_back_and_marks_only_bad_element(api):
+    client, factory, _ = api
+    TestEmbedding.fail_text = "BROKEN_EMBEDDING"
+    payload = dataset_payload()
+    payload["artifacts"].append(
+        {
+            "external_id": "R-bad",
+            "kind": "requirement",
+            "revision": "v1",
+            "content": "BROKEN_EMBEDDING",
+        }
+    )
+    dataset = (await client.post("/api/v1/tlr/datasets", json=payload)).json()["data"]
+    created = await client.post(
+        "/api/v1/tlr/runs",
+        json={
+            **SCOPE,
+            "dataset_id": dataset["id"],
+            "source_ids": ["R1", "R-bad"],
+            "target_ids": ["C1", "C2"],
+            "options": {"top_k": 1, "max_consecutive_failures": 2},
+        },
+    )
+    run_id = created.json()["data"]["id"]
+    response = await client.post(f"/api/v1/tlr/runs/{run_id}/execute", params=SCOPE)
+    assert response.status_code == 200, response.text
+    run = response.json()["data"]
+    assert run["stage"] == "completed_with_errors"
+    assert run["counts"]["embedding_failed"] == 1
+    async with factory() as db:
+        failed = list(
+            await db.scalars(
+                select(TlrElement).where(
+                    TlrElement.run_id == run_id, TlrElement.embedding.is_(None)
+                )
+            )
+        )
+        assert len(failed) == 1
+        assert failed[0].processing["failure"]["stage"] == "embedding"
+
+
+async def test_invalid_model_output_marks_nodes_and_completes_usable_results(api):
     client, factory, llm = api
     llm.fail_after = 1
     run_id, _ = await create_run(client)
     response = await client.post(f"/api/v1/tlr/runs/{run_id}/execute", params=SCOPE)
-    assert response.status_code == 500
+    assert response.status_code == 200, response.text
     async with factory() as db:
         run = await db.get(TlrRun, run_id)
-        assert run.status == "failed" and run.stage == "classification"
+        assert run.status == "completed" and run.stage == "completed_with_errors"
         assert run.counts["classified"] == 1
+        assert run.counts["classification_failed"] == 3
+        assert run.manifest["partial"] is True
+        assert len(run.manifest["node_failures"]) == 3
         candidates = list(
             await db.scalars(select(TlrCandidate).where(TlrCandidate.run_id == run_id))
         )
         assert sum(c.decision == "pending" for c in candidates) == 3
-        assert not list(await db.scalars(select(TlrLink).where(TlrLink.run_id == run_id)))
+        assert sum(c.evidence.get("validation_status") == "invalid" for c in candidates) == 3
+        assert len(list(await db.scalars(select(TlrLink).where(TlrLink.run_id == run_id)))) == 1
+    graph = await client.get(f"/api/v1/tlr/runs/{run_id}/visualization", params=SCOPE)
+    assert len(graph.json()["data"]["failures"]) == 3
 
 
 async def test_gold_is_evaluation_only_and_measures_retrieval_misses(api):

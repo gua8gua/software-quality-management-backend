@@ -67,6 +67,22 @@ class TlrArtifact(Base):
     structure: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
 
 
+class TlrHierarchyNode(Base):
+    """Persisted dataset hierarchy; artifact_id=None denotes a pure structure node."""
+
+    __tablename__ = "tlr_hierarchy_nodes"
+    __table_args__ = (UniqueConstraint("dataset_id", "node_key"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("tlr_datasets.id"), index=True)
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey("tlr_hierarchy_nodes.id"), index=True)
+    artifact_id: Mapped[str | None] = mapped_column(ForeignKey("tlr_artifacts.id"), index=True)
+    node_key: Mapped[str] = mapped_column(String(256))
+    title: Mapped[str] = mapped_column(String(500))
+    node_type: Mapped[str] = mapped_column(String(64), default="group")
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+
+
 class TlrRun(Base):
     __tablename__ = "tlr_runs"
     __table_args__ = (
@@ -149,6 +165,7 @@ TLR_TABLES = [
         TlrFile,
         TlrDataset,
         TlrArtifact,
+        TlrHierarchyNode,
         TlrRun,
         TlrElement,
         TlrCandidate,

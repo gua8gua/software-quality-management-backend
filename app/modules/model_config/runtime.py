@@ -40,6 +40,7 @@ async def resolve_tlr_models(
             "base_url": connection.base_url,
             "is_local": connection.is_local,
             "model_id": binding.model_id,
+            "dimension": binding.dimension,
         }
         return binding, connection, key, snapshot
 
@@ -48,7 +49,7 @@ async def resolve_tlr_models(
         binding, connection, key, embedding_snapshot = selected
         embedding = OpenAICompatibleEmbeddingProvider(base_url=connection.base_url, api_key=key, model=binding.model_id, expected_dimension=binding.dimension or settings.embedding_dimension, timeout_seconds=settings.model_timeout_seconds, trust_env=not connection.is_local)
     else:
-        embedding, embedding_snapshot = fallback_embedding, {"source": ".env", "base_url": settings.model_base_url, "model_id": settings.embedding_model, "is_local": False}
+        embedding, embedding_snapshot = fallback_embedding, {"source": ".env", "base_url": settings.model_base_url, "model_id": settings.embedding_model, "dimension": settings.embedding_dimension, "is_local": False}
 
     def llm_for(task: str, fallback: LLMProvider):
         selected_llm = credentials(task)

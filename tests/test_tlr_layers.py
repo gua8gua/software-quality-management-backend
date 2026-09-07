@@ -65,6 +65,53 @@ async def test_reference_is_never_used_as_code():
         )
 
 
+async def test_run_skips_one_preprocessing_artifact_and_marks_partial(api):
+    client, _, _ = api
+    payload = {
+        "tenant_id": "tenant-a",
+        "project_id": "software-a",
+        "version": "partial-preprocessing",
+        "artifacts": [
+            {
+                "external_id": "R-good",
+                "kind": "requirement",
+                "revision": "v1",
+                "content": "login is required.",
+            },
+            {
+                "external_id": "R-ref",
+                "kind": "code",
+                "revision": "v1",
+                "content": "Missing.java",
+                "structure": {"content_status": "reference_only"},
+            },
+            {"external_id": "T", "kind": "test_case", "revision": "v1", "content": "login test"},
+        ],
+    }
+    dataset = (await client.post("/api/v1/tlr/datasets", json=payload)).json()["data"]
+    created = await client.post(
+        "/api/v1/tlr/runs",
+        json={
+            "tenant_id": "tenant-a",
+            "project_id": "software-a",
+            "dataset_id": dataset["id"],
+            "source_ids": ["R-good", "R-ref"],
+            "target_ids": ["T"],
+            "options": {"top_k": 1, "source_preprocessor": "auto", "target_preprocessor": "auto"},
+        },
+    )
+    run_id = created.json()["data"]["id"]
+    response = await client.post(
+        f"/api/v1/tlr/runs/{run_id}/execute",
+        params={"tenant_id": "tenant-a", "project_id": "software-a"},
+    )
+    assert response.status_code == 200, response.text
+    run = response.json()["data"]
+    assert run["status"] == "completed" and run["stage"] == "completed_with_errors"
+    failure = run["manifest"]["node_failures"][0]
+    assert failure["node_type"] == "artifact" and failure["external_id"] == "R-ref"
+
+
 async def test_llm_structure_is_grounded_and_records_provenance():
     class Extractor:
         model = "test-extractor"
