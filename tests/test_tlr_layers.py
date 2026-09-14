@@ -65,7 +65,7 @@ async def test_reference_is_never_used_as_code():
         )
 
 
-async def test_run_skips_one_preprocessing_artifact_and_marks_partial(api):
+async def test_run_rejects_reference_only_artifact_and_accepts_content(api):
     client, _, _ = api
     payload = {
         "tenant_id": "tenant-a",
@@ -100,16 +100,25 @@ async def test_run_skips_one_preprocessing_artifact_and_marks_partial(api):
             "options": {"top_k": 1, "source_preprocessor": "auto", "target_preprocessor": "auto"},
         },
     )
+    assert created.status_code == 422
+    assert created.json()["data"] is None
+    created = await client.post(
+        "/api/v1/tlr/runs",
+        json={
+            "tenant_id": "tenant-a", "project_id": "software-a",
+            "dataset_id": dataset["id"], "source_ids": ["R-good"], "target_ids": ["T"],
+            "options": {"top_k": 1, "source_preprocessor": "auto", "target_preprocessor": "auto"},
+        },
+    )
+    assert created.status_code == 200, created.text
     run_id = created.json()["data"]["id"]
     response = await client.post(
         f"/api/v1/tlr/runs/{run_id}/execute",
         params={"tenant_id": "tenant-a", "project_id": "software-a"},
     )
     assert response.status_code == 200, response.text
-    run = response.json()["data"]
-    assert run["status"] == "completed" and run["stage"] == "completed_with_errors"
-    failure = run["manifest"]["node_failures"][0]
-    assert failure["node_type"] == "artifact" and failure["external_id"] == "R-ref"
+    assert response.json()["data"]["status"] == "completed"
+
 
 
 async def test_llm_structure_is_grounded_and_records_provenance():

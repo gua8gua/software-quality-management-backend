@@ -375,6 +375,11 @@ def test_migration_upgrade_schema_matches_models_and_downgrades():
     )
     model_migration = importlib.util.module_from_spec(model_spec)
     model_spec.loader.exec_module(model_migration)
+    hierarchy_spec = importlib.util.spec_from_file_location(
+        "hierarchy_migration", path.parent / "20260906_0006_tlr_hierarchy.py"
+    )
+    hierarchy_migration = importlib.util.module_from_spec(hierarchy_spec)
+    hierarchy_spec.loader.exec_module(hierarchy_migration)
     metadata = MetaData()
     for table in TLR_TABLES:
         table.to_metadata(metadata)
@@ -385,8 +390,10 @@ def test_migration_upgrade_schema_matches_models_and_downgrades():
             next_migration.upgrade()
             structure_migration.upgrade()
             model_migration.upgrade()
+            hierarchy_migration.upgrade()
             assert set(inspect(connection).get_table_names()) == set(metadata.tables)
             assert compare_metadata(context, metadata) == []
+            hierarchy_migration.downgrade()
             model_migration.downgrade()
             structure_migration.downgrade()
             next_migration.downgrade()

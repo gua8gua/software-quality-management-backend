@@ -9,6 +9,19 @@ def test_business_endpoints_are_explicit() -> None:
         for method in path_item
     }
     assert operations == {
+        ("GET", "/api/v1/tlr/plans/{plan_id}/runs"),
+        ("GET", "/api/v1/tlr/datasets/{dataset_id}/original-structure"),
+        ("GET", "/api/v1/tlr/datasets/{dataset_id}/hierarchy"),
+        ("POST", "/api/v1/tlr/runs/{run_id}/resume"),
+        ("POST", "/api/v1/tlr/runs/{run_id}/visualization/projection"),
+        ("POST", "/api/v1/tlr/plans/{plan_id}/resume"),
+        ("GET", "/api/v1/consistency/runs"),
+        ("POST", "/api/v1/consistency/runs"),
+        ("GET", "/api/v1/consistency/runs/{run_id}"),
+        ("POST", "/api/v1/consistency/runs/{run_id}/execute"),
+        ("POST", "/api/v1/consistency/runs/{run_id}/reviews"),
+        ("POST", "/api/v1/requirements/analyses"),
+        ("GET", "/api/v1/requirements/analyses/{identifier}"),
         ("POST", "/api/v1/knowledge-bases/create"),
         ("POST", "/api/v1/documents/upload"),
         ("POST", "/api/v1/rag/retrieve"),
