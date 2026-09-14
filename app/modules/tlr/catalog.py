@@ -283,6 +283,21 @@ async def hierarchy(dataset_id: str, tenant_id: Scope, project_id: Scope, sessio
     return ApiResponse(data=[HierarchyNodeView.model_validate(row) for row in rows])
 
 
+@router.get("/datasets/{dataset_id}/original-structure", response_model=ApiResponse[dict])
+async def original_structure_view(dataset_id: str, tenant_id: Scope, project_id: Scope,
+                                  session: SessionDep, layer: str = Query("requirements")):
+    from app.modules.tlr.original_structure import original_structure
+    from app.modules.tlr.planning import LAYERS
+
+    if layer not in dict(LAYERS):
+        raise AppError(ErrorCode.DATA_INVALID, "请选择支持的生命周期层级")
+    repo = TlrRepository(session)
+    await repo.dataset(dataset_id, tenant_id, project_id)
+    artifacts = await repo.artifacts(dataset_id)
+    hierarchy = list(await session.scalars(select(TlrHierarchyNode).where(TlrHierarchyNode.dataset_id == dataset_id)))
+    return ApiResponse(data=original_structure(artifacts, hierarchy, layer))
+
+
 async def scoped_artifact(session, artifact_id, tenant_id, project_id):
     row = await session.scalar(
         select(TlrArtifact)

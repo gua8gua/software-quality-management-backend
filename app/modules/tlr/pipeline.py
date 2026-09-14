@@ -17,6 +17,9 @@ Return ONLY a JSON object: {"related": true or false, "evidence": "brief evidenc
 "source_quote": "exact short quote from source", "target_quote": "exact short quote from target"}.
 For a positive decision both quotes must be nonempty verbatim substrings supporting the link.
 Do not infer implementation correctness, test execution, or test coverage from a link.
+Context on both sides preserves parent scope, conditions and nearby statements. It is not a trace label.
+Across lifecycle levels, consider refinement, realization or justification despite different vocabulary.
+For peer documents, link comparable claims or constraints; shared topic alone is insufficient.
 Do not include hidden reasoning; give only a short evidence summary.
 """
 
@@ -169,8 +172,12 @@ class PairClassifier:
         result = await self.llm.chat_json(
             system_prompt=PROMPT,
             user_payload={
-                "source": {"type": source.kind, "content": source.content},
-                "target": {"type": target.kind, "content": target.content},
+                "source": {"type": source.kind, "content": source.content,
+                           "artifact_context": (source.processing or {}).get("artifact_context", {}),
+                           **({"context": source.processing["requirement_context"]}
+                              if (source.processing or {}).get("requirement_context") else {})},
+                "target": {"type": target.kind, "content": target.content,
+                           "artifact_context": (target.processing or {}).get("artifact_context", {})},
             },
             temperature=0.0,
         )

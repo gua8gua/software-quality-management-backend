@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 
 from app.api.v1.routes import documents, knowledge_bases, rag
+from app.modules.consistency.router import router as consistency_router
+from app.modules.requirements.router import router as requirements_router
 from app.modules.model_config.router import router as model_config_router
 from app.modules.tlr.catalog import router as catalog_router
 from app.modules.tlr.planning import router as planning_router
@@ -14,4 +16,6 @@ api_router.include_router(tlr_router)
 api_router.include_router(catalog_router)
 api_router.include_router(planning_router)
 api_router.include_router(model_config_router)
+api_router.include_router(consistency_router)
+api_router.include_router(requirements_router)
 

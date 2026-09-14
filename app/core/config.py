@@ -56,6 +56,7 @@ class Settings(BaseSettings):
 
     # TLR module limits; Java dependency is optional and explicitly selected per run.
     tlr_max_elements: int = Field(default=5000, gt=0)
+    artifact_context_cache_dir: str = "artifacts/context-cache"
     tlr_max_candidates: int = Field(default=20_000, gt=0)
     tlr_max_comparisons: int = Field(default=2_000_000, gt=0)
     tlr_retrieval_timeout_seconds: float = Field(default=120, gt=0)

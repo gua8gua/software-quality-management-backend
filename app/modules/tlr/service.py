@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import AppError
+from app.modules.artifact_context import ArtifactContext
 from app.modules.model_config.runtime import resolve_tlr_models
 from app.modules.tlr.diagnostics import PreprocessingFailure, failure_detail, preflight
 from app.modules.tlr.models import (
@@ -318,14 +319,33 @@ class TlrService:
         await self.session.commit()
         artifacts = await self.repo.artifacts(run.dataset_id)
         sources, targets = [], []
+        context = await ArtifactContext.prepare(
+            self.session, artifacts, run.tenant_id, run.project_id, run.dataset_id,
+            self.settings.artifact_context_cache_dir,
+        )
+        run.manifest = {**run.manifest, "artifact_context": context.manifest()}
+        requirement_analysis = None
+        if options.requirements_run_id:
+            from app.modules.requirements.service import load_analysis
+            from app.modules.tlr.hierarchical import HierarchicalRetriever, requirement_elements
+            requirement_analysis = await load_analysis(self.session, options.requirements_run_id,
+                run.tenant_id, run.project_id, run.dataset_id, artifacts)
+            if not set(run.config["source_ids"]) <= set(requirement_analysis["requirements"]):
+                raise ValueError("Every source must exist in the selected requirement hierarchy")
+            retriever = HierarchicalRetriever(requirement_analysis, self.embedding, retriever, options)
+            run.manifest = {**run.manifest, "requirements_run_id": options.requirements_run_id,
+                            "requirement_hierarchy": requirement_analysis, "retriever": retriever.name}
         for role, destination in [("source", sources), ("target", targets)]:
             selected = set(run.config[f"{role}_ids"])
             for artifact in artifacts:
                 if artifact.external_id in selected:
                     try:
-                        units = await preprocess_typed(
-                            artifact, role, run.id, options, self.architecture_llm
-                        )
+                        if role == "source" and requirement_analysis is not None:
+                            units = requirement_elements(artifact, requirement_analysis, run.id, options)
+                        else:
+                            units = await preprocess_typed(
+                                artifact, role, run.id, options, self.architecture_llm
+                            )
                     except (ValueError, SyntaxError) as exc:
                         await record_failure(
                             "preprocessing",
@@ -336,6 +356,9 @@ class TlrService:
                             role=role,
                         )
                         continue
+                    for unit in units:
+                        unit.processing = {**(unit.processing or {}), "artifact_context":
+                            context.around(artifact.external_id, unit.start, unit.end)}
                     destination.extend(units)
                     self.session.add_all(units)
                     await self.session.commit()
@@ -460,6 +483,8 @@ class TlrService:
         await self.session.commit()
 
         rows = await retriever.retrieve(active_sources, active_targets, options.top_k)
+        if requirement_analysis is not None:
+            run.manifest = {**run.manifest, "hierarchical_retrieval": retriever.stats}
         candidates = [
             TlrCandidate(
                 run_id=run.id, source_element_id=s, target_element_id=t, rank=rank, similarity=score

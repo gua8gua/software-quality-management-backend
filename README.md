@@ -1,5 +1,7 @@
 # 软件质量管理后端
 
+新增 [需求层级与分层匹配](docs/requirements-hierarchy.md) 和 [需求—代码一致性判断](docs/consistency.md)：保留原文、构建需求子单元与语义类别，通过 TLR 匹配代码，记录各段代码实现的需求部分，输出可共存的实现、缺失功能、冲突、判断出错。
+
 ## 开发与协作规范（Git Workflow）
 
 采用特性分支工作流与 Pull Request 审查机制，参照工作区 `日志/README.md`。

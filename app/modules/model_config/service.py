@@ -18,6 +18,8 @@ from app.providers.llm.openai_compatible import OpenAICompatibleLLMProvider
 
 
 TASKS = [
+    TaskInfo(id="requirements_analysis", label="需求细分与功能聚类", description="保留原文出处，生成需求子单元与高层功能类别。", capability="chat"),
+    TaskInfo(id="consistency_judgement", label="需求代码一致性判断", description="按代码记录需求实现部分，判断实现、缺失功能、冲突和判断出错。", capability="chat"),
     TaskInfo(id="tlr_embedding", label="TLR 向量化", description="为分割后的制品单元生成检索向量。", capability="embedding"),
     TaskInfo(id="tlr_classification", label="TLR 链接判定", description="对候选制品对进行结构化相关性判断。", capability="chat"),
     TaskInfo(id="architecture_extraction", label="架构结构抽取", description="将架构文档抽取为可追踪的结构单元。", capability="chat"),

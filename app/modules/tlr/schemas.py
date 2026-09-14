@@ -135,6 +135,11 @@ Strategy = Literal[
 
 
 class RunOptions(Contract):
+    requirements_run_id: str | None = Field(default=None, min_length=1, max_length=36)
+    hierarchy_top_categories: int = Field(default=1, ge=1, le=10)
+    hierarchy_top_subcategories: int = Field(default=2, ge=1, le=10)
+    hierarchy_min_similarity: float = Field(default=0.15, ge=-1, le=1)
+    hierarchy_probe_targets: int = Field(default=1, ge=0, le=10)
     top_k: int = Field(default=20, ge=1, le=100)
     source_preprocessor: Strategy = "artifact"
     target_preprocessor: Strategy = "artifact"

@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, SecretStr
 
 
-TaskId = Literal["tlr_embedding", "tlr_classification", "architecture_extraction"]
+TaskId = Literal["tlr_embedding", "tlr_classification", "architecture_extraction", "consistency_judgement", "requirements_analysis"]
 ModelCapability = Literal[
     "chat", "embedding", "rerank", "vision", "image_generation",
     "speech", "transcription", "unknown",
