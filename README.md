@@ -73,7 +73,7 @@ LLM_TIMEOUT_SECONDS=60
 
 `EMBEDDING_DIMENSION` 填写实际模型的向量维度。启动前端后，也可在 `#/models` 配置模型连接及任务绑定。
 
-需要使用 Java LiSSA 检索时，安装 JDK 17 和 Maven，并执行：
+需要使用 Java LiSSA 检索时，安装 JDK 21 和 Maven，并执行：
 
 ```powershell
 $env:Path = "$(Join-Path $PWD '.venv\Scripts');$env:Path"
@@ -109,3 +109,4 @@ docker compose logs --tail 50 api
 ```powershell
 docker compose stop
 ```
+
