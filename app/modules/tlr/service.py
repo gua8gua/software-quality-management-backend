@@ -315,6 +315,15 @@ class TlrService:
             "llm_model": self.classifier.llm.model,
             "llm_base_url": self.model_snapshot["tlr_classification"]["base_url"],
             "temperature": 0.0,
+            "segmentation": {
+                "implementation": "typed-preprocessing-v1",
+                "source": options.source_preprocessor,
+                "target": options.target_preprocessor,
+                "per_kind": options.kind_preprocessors,
+                "chunk_size": options.chunk_size,
+                "max_element_chars": options.max_element_chars,
+                "lissa_role": "retrieval-only; LiSSA does not segment artifacts",
+            },
         }
         await self.session.commit()
         artifacts = await self.repo.artifacts(run.dataset_id)

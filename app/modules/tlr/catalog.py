@@ -25,10 +25,12 @@ from app.modules.tlr.models import (
     TlrProject,
     TlrRun,
 )
+from app.modules.tlr.content_reader import ArtifactContentReader
 from app.modules.tlr.repository import TlrRepository
 from app.modules.tlr.router import Scope, Service
 from app.modules.tlr.schemas import (
     ArtifactInput,
+    ArtifactContentView,
     ArtifactView,
     CandidateView,
     Contract,
@@ -321,11 +323,40 @@ async def artifact_detail(
     return ApiResponse(data=ArtifactView.model_validate(row))
 
 
+@router.get("/artifacts/{artifact_id}/content", response_model=ApiResponse[ArtifactContentView])
+async def artifact_content(
+    artifact_id: str, tenant_id: Scope, project_id: Scope, session: SessionDep, settings: SettingsDep
+):
+    row = await scoped_artifact(session, artifact_id, tenant_id, project_id)
+    if row.content_mode == "path":
+        available, content, reason = ArtifactContentReader(settings).read(row)
+        status = "LOCAL_FILE" if available else "MISSING_FILE"
+        return ApiResponse(data=ArtifactContentView(available=available, status=status, content=content, reason=reason))
+    if (row.structure or {}).get("content_status") == "reference_only":
+        return ApiResponse(data=ArtifactContentView(
+            available=False,
+            reason="当前资料仅提供引用信息，数据源未保存正文。",
+        ))
+    if not row.content or not row.content.strip():
+        return ApiResponse(data=ArtifactContentView(
+            available=False,
+            reason="当前资料没有可用正文。",
+        ))
+    return ApiResponse(data=ArtifactContentView(available=True, status="INLINE", content=row.content))
+
+
 @router.get("/artifacts/{artifact_id}/download", response_class=Response)
 async def download(artifact_id: str, tenant_id: Scope, project_id: Scope, session: SessionDep):
     row = await scoped_artifact(session, artifact_id, tenant_id, project_id)
     original = await session.get(TlrFile, row.original_file_id) if row.original_file_id else None
-    payload = original.payload if original else row.content.encode("utf-8")
+    if original:
+        payload = original.payload
+    else:
+        from app.core.config import get_settings
+        ok, text, reason = ArtifactContentReader(get_settings()).read(row)
+        if not ok:
+            raise AppError(ErrorCode.NOT_FOUND, reason or "正文不可用")
+        payload = text.encode("utf-8")
     filename = original.filename if original else f"{row.external_id}.txt"
     return Response(
         payload,

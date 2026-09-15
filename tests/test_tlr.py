@@ -380,6 +380,11 @@ def test_migration_upgrade_schema_matches_models_and_downgrades():
     )
     hierarchy_migration = importlib.util.module_from_spec(hierarchy_spec)
     hierarchy_spec.loader.exec_module(hierarchy_migration)
+    dataset_spec = importlib.util.spec_from_file_location(
+        "dataset_ingestion_migration", path.parent / "20260915_0009_dataset_ingestion.py"
+    )
+    dataset_migration = importlib.util.module_from_spec(dataset_spec)
+    dataset_spec.loader.exec_module(dataset_migration)
     metadata = MetaData()
     for table in TLR_TABLES:
         table.to_metadata(metadata)
@@ -391,8 +396,10 @@ def test_migration_upgrade_schema_matches_models_and_downgrades():
             structure_migration.upgrade()
             model_migration.upgrade()
             hierarchy_migration.upgrade()
+            dataset_migration.upgrade()
             assert set(inspect(connection).get_table_names()) == set(metadata.tables)
             assert compare_metadata(context, metadata) == []
+            dataset_migration.downgrade()
             hierarchy_migration.downgrade()
             model_migration.downgrade()
             structure_migration.downgrade()

@@ -25,7 +25,7 @@ from app.services.indexing_service import IndexingService
 from app.services.knowledge_base_service import KnowledgeBaseService
 from app.services.rag_service import RagService
 from app.services.requirement_extraction_service import RequirementExtractionService
-from app.utils.text_splitter import CharacterTextSplitter, TextSplitter
+from app.utils.text_splitter import CharacterTextSplitter, ParagraphTextSplitter, TextSplitter
 
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -82,6 +82,13 @@ def get_document_parser() -> DocumentParser:
 
 
 def get_text_splitter(settings: SettingsDep) -> TextSplitter:
+    if settings.document_splitter == "paragraph":
+        return ParagraphTextSplitter(
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
+        )
+    if settings.document_splitter != "character":
+        raise ValueError("Unsupported DOCUMENT_SPLITTER: use character or paragraph")
     return CharacterTextSplitter(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,

@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     vector_store: str = "pgvector"
     chunk_size: int = Field(default=800, gt=0)
     chunk_overlap: int = Field(default=100, ge=0)
+    document_splitter: str = "character"
     top_k: int = Field(default=5, gt=0, le=100)
 
     # 通用大模型（OpenAI 兼容接口）—— 重排、改写、意图识别等能力统一走这里

@@ -29,6 +29,7 @@ class TlrDataset(Base):
     tenant_id: Mapped[str] = mapped_column(String(128), index=True)
     project_id: Mapped[str] = mapped_column(String(128), index=True)
     version: Mapped[str] = mapped_column(String(128))
+    source_dataset: Mapped[str] = mapped_column(String(128), default="", server_default="")
     digest: Mapped[str] = mapped_column(String(64))
     provenance: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -61,7 +62,9 @@ class TlrArtifact(Base):
     kind: Mapped[str] = mapped_column(String(128))
     revision: Mapped[str] = mapped_column(String(128))
     locator: Mapped[str] = mapped_column(Text)
-    content: Mapped[str] = mapped_column(Text)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_mode: Mapped[str] = mapped_column(String(16), default="inline", server_default="inline")
+    content_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     sha256: Mapped[str] = mapped_column(String(64))
     original_file_id: Mapped[str | None] = mapped_column(ForeignKey("tlr_files.id"))
     structure: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
@@ -149,6 +152,22 @@ class TlrLink(Base):
     evidence_candidate_ids: Mapped[list] = mapped_column(JSON)
 
 
+class TlrDatasetTraceLink(Base):
+    """Gold trace supplied by an imported dataset; model links remain in TlrLink."""
+    __tablename__ = "tlr_dataset_trace_links"
+    __table_args__ = (UniqueConstraint("dataset_id", "source_artifact_id", "target_artifact_id", "relation"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("tlr_datasets.id"), index=True)
+    source_artifact_id: Mapped[str] = mapped_column(ForeignKey("tlr_artifacts.id"))
+    target_artifact_id: Mapped[str] = mapped_column(ForeignKey("tlr_artifacts.id"))
+    relation: Mapped[str] = mapped_column(String(64), default="related_to")
+    source_dataset: Mapped[str] = mapped_column(String(128), default="")
+    source_version: Mapped[str] = mapped_column(String(128), default="")
+    source_type: Mapped[str] = mapped_column(String(32), default="dataset-provided")
+    original_relation: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+    provenance: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+
+
 class TlrEvaluation(Base):
     __tablename__ = "tlr_evaluations"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -170,6 +189,7 @@ TLR_TABLES = [
         TlrElement,
         TlrCandidate,
         TlrLink,
+        TlrDatasetTraceLink,
         TlrEvaluation,
     )
 ]

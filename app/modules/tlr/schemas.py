@@ -97,11 +97,25 @@ class DatasetView(Contract):
     created_at: datetime
 
 
-class ArtifactView(ArtifactInput):
+class ArtifactView(Contract):
+    external_id: Identifier
+    kind: Identifier
+    revision: Identifier
+    locator: str = Field(default="", max_length=2000)
+    structure: dict = Field(default_factory=dict)
     id: str
     dataset_id: str
     sha256: str
     original_file_id: str | None = None
+    content_mode: str = "inline"
+    content_path: str | None = None
+
+
+class ArtifactContentView(Contract):
+    available: bool
+    status: str = "UNAVAILABLE"
+    content: str | None = None
+    reason: str | None = None
 
 
 class HierarchyNodeView(Contract):
