@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.routes import documents, knowledge_bases, rag
+from app.api.v1.routes import documents, knowledge_bases, rag, requirements
 from app.modules.consistency.router import router as consistency_router
 from app.modules.requirements.router import router as requirements_router
 from app.modules.model_config.router import router as model_config_router
@@ -19,3 +19,5 @@ api_router.include_router(model_config_router)
 api_router.include_router(consistency_router)
 api_router.include_router(requirements_router)
 
+
+api_router.include_router(requirements.router)

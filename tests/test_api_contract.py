@@ -56,7 +56,8 @@ def test_business_endpoints_are_explicit() -> None:
             ("PUT", "/api/v1/model-config/tasks/{task}"),
             ("POST", "/api/v1/model-config/tasks/{task}/test"),
             ("DELETE", "/api/v1/model-config/tasks/{task}"),
-        }
+        ("POST", "/api/v1/requirements/extract"),
+    }
 
 
 def test_openapi_describes_unified_success_responses() -> None:
