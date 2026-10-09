@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, SecretStr
 
 
-TaskId = Literal["tlr_embedding", "tlr_classification", "architecture_extraction", "consistency_judgement", "requirements_analysis"]
+TaskId = Literal["tlr_embedding", "tlr_llm", "review_analysis", "agent_chat", "peer_llm"]
 ModelCapability = Literal[
     "chat", "embedding", "rerank", "vision", "image_generation",
     "speech", "transcription", "unknown",
@@ -40,6 +40,8 @@ class ModelItem(BaseModel):
     parameter_size: str | None = None
     quantization_level: str | None = None
     embedding_dimension: int | None = None
+    context_window: int | None = None
+    max_output_tokens: int | None = None
     verification: dict[str, str] = Field(default_factory=dict)
 
 
@@ -66,6 +68,7 @@ class BindingInput(BaseModel):
     connection_id: str
     model_id: str = Field(min_length=1, max_length=255)
     dimension: int | None = Field(default=None, gt=0, le=100_000)
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
 
 
 class BindingView(BaseModel):
@@ -73,6 +76,7 @@ class BindingView(BaseModel):
     connection_id: str | None = None
     model_id: str | None = None
     dimension: int | None = None
+    temperature: float | None = None
     test_status: str = "unconfigured"
     test_message: str = ""
     last_tested_at: datetime | None = None
@@ -84,6 +88,8 @@ class TaskInfo(BaseModel):
     label: str
     description: str
     capability: Literal["embedding", "chat"]
+    group: str = "legacy"
+    group_label: str = "Other"
 
 
 class ConfigView(BaseModel):

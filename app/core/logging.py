@@ -33,8 +33,7 @@ from app.core.context import get_request_id
 # 格式与颜色
 # --------------------------------------------------------------------------- #
 LOG_FORMAT = (
-    "%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d "
-    "| rid=%(rid)s | %(message)s"
+    "%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d | rid=%(rid)s | %(message)s"
 )
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -301,9 +300,7 @@ def api_log(
                     stacklevel=2,
                 )
             else:
-                logger.info(
-                    f"{event_prefix}_RESPONSE | {name} | cost={cost:.2f}ms", stacklevel=2
-                )
+                logger.info(f"{event_prefix}_RESPONSE | {name} | cost={cost:.2f}ms", stacklevel=2)
             return result
 
         return sync_wrapper  # type: ignore[return-value]

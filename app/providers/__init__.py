@@ -1,2 +1,1 @@
 """Replaceable external provider integrations."""
-

@@ -1,10 +1,62 @@
-from app.models.chunk import Chunk
-from app.models.document import Document, DocumentStatus
-from app.models.knowledge_base import KnowledgeBase
-from app.models.retrieval_log import RetrievalLog
-from app.modules.tlr import models as tlr_models  # noqa: F401
-from app.modules.consistency import models as consistency_models  # noqa: F401
-from app.modules.requirements import models as requirements_models  # noqa: F401
+"""Import all official ORM models for metadata discovery."""
 
-__all__ = ["Chunk", "Document", "DocumentStatus", "KnowledgeBase", "RetrievalLog"]
+from app.modules.artifacts.models import (
+    Artifact,
+    ContentNode,
+    ContentRelation,
+    File,
+    Folder,
+    Project,
+)
+from app.modules.information_access.review_models import (
+    Review,
+    ReviewBatch,
+    ReviewCheck,
+    ReviewEvent,
+    ReviewEvidence,
+    ReviewEvidenceCheck,
+    ReviewPassage,
+    ReviewPassageAssessment,
+    ReviewSentence,
+    ReviewSessionItem,
+    ReviewTask,
+    ReviewVisit,
+)
+from app.modules.model_config.models import ModelConnection, ModelTaskBinding
+from app.modules.traceability.models import (
+    Candidate,
+    RetrievalProjection,
+    SemanticAnnotation,
+    TlrRun,
+    TraceLink,
+    TraceUnit,
+)
 
+__all__ = [
+    "ModelConnection",
+    "ModelTaskBinding",
+    "Project",
+    "File",
+    "Folder",
+    "Artifact",
+    "ContentNode",
+    "ContentRelation",
+    "TlrRun",
+    "SemanticAnnotation",
+    "RetrievalProjection",
+    "TraceUnit",
+    "Candidate",
+    "TraceLink",
+    "Review",
+    "ReviewBatch",
+    "ReviewSentence",
+    "ReviewCheck",
+    "ReviewEvidence",
+    "ReviewEvidenceCheck",
+    "ReviewPassage",
+    "ReviewPassageAssessment",
+    "ReviewVisit",
+    "ReviewTask",
+    "ReviewEvent",
+    "ReviewSessionItem",
+]

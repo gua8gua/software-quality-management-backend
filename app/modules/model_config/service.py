@@ -13,16 +13,16 @@ from app.core.exceptions import AppError
 from app.modules.model_config.models import ModelConnection, ModelTaskBinding
 from app.modules.model_config.schemas import BindingInput, BindingView, ConfigView, ConnectionInput, ConnectionView, ModelItem, ModelMetadataInput, ProviderOption, TaskInfo
 from app.modules.model_config.vault import CredentialVault
-from app.providers.embedding.openai_compatible import OpenAICompatibleEmbeddingProvider
+from app.providers.embeddings.openai_compatible import OpenAICompatibleEmbeddingProvider
 from app.providers.llm.openai_compatible import OpenAICompatibleLLMProvider
 
 
 TASKS = [
-    TaskInfo(id="requirements_analysis", label="需求细分与功能聚类", description="保留原文出处，生成需求子单元与高层功能类别。", capability="chat"),
-    TaskInfo(id="consistency_judgement", label="需求代码一致性判断", description="按代码记录需求实现部分，判断实现、缺失功能、冲突和判断出错。", capability="chat"),
-    TaskInfo(id="tlr_embedding", label="TLR 向量化", description="为分割后的制品单元生成检索向量。", capability="embedding"),
-    TaskInfo(id="tlr_classification", label="TLR 链接判定", description="对候选制品对进行结构化相关性判断。", capability="chat"),
-    TaskInfo(id="architecture_extraction", label="架构结构抽取", description="将架构文档抽取为可追踪的结构单元。", capability="chat"),
+    TaskInfo(id="review_analysis", label="一致性分析与修改建议", description="已有 TLR 后的 Agents SDK 评审、证据调查、总体评价和建议验证；不重新生成追溯或向量。", capability="chat", group="analysis", group_label="一致性分析"),
+    TaskInfo(id="tlr_embedding", label="TLR 向量编码", description="规范内容树的检索投影向量编码，不自动重建已有向量。", capability="embedding", group="tlr", group_label="TLR"),
+    TaskInfo(id="tlr_llm", label="TLR 语义标注与 Fine Trace", description="当前正式 TLR 的标注及候选判断模型。", capability="chat", group="tlr", group_label="TLR"),
+    TaskInfo(id="agent_chat", label="项目对话", description="通过信息工具查询当前项目的真实数据。", capability="chat", group="agent", group_label="项目对话"),
+    TaskInfo(id="peer_llm", label="原有需求与报告工具", description="原有需求拆分、需求代码映射与报告功能，保持原实现。", capability="chat", group="peer", group_label="原有工具"),
 ]
 TASK_MAP = {task.id: task for task in TASKS}
 PROVIDERS = [
@@ -105,9 +105,11 @@ class ModelConfigService:
 
     def binding_view(self, task: str, row: ModelTaskBinding | None) -> BindingView:
         if row:
-            return BindingView(task=task, connection_id=row.connection_id, model_id=row.model_id, dimension=row.dimension, test_status=row.test_status, test_message=row.test_message, last_tested_at=row.last_tested_at)
+            return BindingView(task=task, connection_id=row.connection_id, model_id=row.model_id, dimension=row.dimension, temperature=row.temperature, test_status=row.test_status, test_message=row.test_message, last_tested_at=row.last_tested_at)
+        if task == "review_analysis":
+            return BindingView(task=task, fallback={"source": "worker environment", "note": "未绑定时使用审核 worker 的现有配置；绑定后仅使用所选连接，不回退到其他模型。"})
         embedding = task == "tlr_embedding"
-        return BindingView(task=task, fallback={"source": ".env", "base_url": self.settings.model_base_url if embedding else self.settings.llm_base_url, "model_id": self.settings.embedding_model if embedding else self.settings.llm_model, "api_key_configured": bool(self.settings.model_api_key if embedding else self.settings.llm_api_key)})
+        return BindingView(task=task, fallback={"source": ".env", "base_url": self.settings.embedding_base_url if embedding else self.settings.llm_base_url, "model_id": self.settings.embedding_model if embedding else self.settings.llm_model, "api_key_configured": bool(self.settings.embedding_api_key if embedding else self.settings.llm_api_key)})
 
     async def create(self, tenant: str, data: ConnectionInput) -> ConnectionView:
         base_url, local = self.resolve_provider(data)
@@ -160,6 +162,10 @@ class ModelConfigService:
                         metadata["capabilities"] = old.get("capabilities", ["unknown"])
                         metadata["capability_source"] = "manual"
                     metadata["verification"] = old.get("verification", {})
+                    for field in ("context_window", "max_output_tokens"):
+                        value = item.get(field)
+                        if isinstance(value, int) and value > 0:
+                            metadata[field] = value
                     models.append({"id": model_id, "owned_by": str(item.get("owned_by", "unknown")), **metadata})
             row.models = sorted(models, key=lambda item: item["id"])
             row.status, row.status_message = "available", f"已读取 {len(row.models)} 个模型"
@@ -183,9 +189,9 @@ class ModelConfigService:
             raise AppError(ErrorCode.DATA_INVALID, "向量模型必须填写输出维度")
         key = (tenant, task); row = await self.session.get(ModelTaskBinding, key)
         if row is None:
-            row = ModelTaskBinding(tenant_id=tenant, task=task, connection_id=data.connection_id, model_id=data.model_id, dimension=dimension); self.session.add(row)
+            row = ModelTaskBinding(tenant_id=tenant, task=task, connection_id=data.connection_id, model_id=data.model_id, dimension=dimension, temperature=data.temperature); self.session.add(row)
         else:
-            row.connection_id, row.model_id, row.dimension = data.connection_id, data.model_id, dimension; row.test_status = "untested"; row.test_message = ""
+            row.connection_id, row.model_id, row.dimension, row.temperature = data.connection_id, data.model_id, dimension, data.temperature; row.test_status = "untested"; row.test_message = ""
         await self.session.commit(); await self.session.refresh(row); return self.binding_view(task, row)
 
     async def test(self, tenant: str, task: str) -> BindingView:
@@ -194,12 +200,35 @@ class ModelConfigService:
         connection = await self._connection(tenant, row.connection_id)
         key = self.vault.decrypt(connection.api_key_ciphertext) or ("local" if connection.is_local else "")
         try:
-            if TASK_MAP[task].capability == "embedding":
-                provider = OpenAICompatibleEmbeddingProvider(base_url=connection.base_url, api_key=key, model=row.model_id, expected_dimension=row.dimension or 1, timeout_seconds=self.settings.model_timeout_seconds, trust_env=not connection.is_local)
-                vectors = await provider.embed(["model configuration test"]); message = f"调用成功，向量维度 {len(vectors[0])}"
+            if task == "review_analysis":
+                await self.refresh(connection)
+                if connection.status != "available" or not any(item["id"] == row.model_id for item in connection.models):
+                    raise ValueError("Selected review model catalog is unavailable")
+                payload = {"model": row.model_id, "messages": [{"role": "user", "content": "准入检查"}]}
+                if connection.provider == "deepseek":
+                    if row.model_id not in {"deepseek-flash", "deepseek-v4-pro"}:
+                        raise ValueError("No verified reference tokenizer for this model generation")
+                    from app.modules.model_config.deepseek_reference import count_chat_tokens
+                    count_chat_tokens(payload)
+                elif connection.is_local:
+                    async with httpx.AsyncClient(timeout=4.0, trust_env=False) as client:
+                        response = await client.post(ollama_native_root(connection.base_url) + "/tokenize",
+                                                     json=payload, headers={"Authorization": "Bearer " + key})
+                        response.raise_for_status()
+                        if not isinstance(response.json().get("count"), int):
+                            raise ValueError("Local tokenizer returned no count")
+                else:
+                    raise ValueError("No verified admission tokenizer for this provider")
+                message = "模型目录与准入 tokenizer 可用；未执行 Agent，也不代表生成质量已验证"
+            elif TASK_MAP[task].capability == "embedding":
+                provider = OpenAICompatibleEmbeddingProvider(base_url=connection.base_url, api_key=key, model=row.model_id, timeout_seconds=self.settings.model_timeout_seconds, trust_env=not connection.is_local)
+                vectors = await provider.encode_documents(["model configuration test"])
+                if not vectors or len(vectors[0]) != row.dimension:
+                    raise ValueError("Embedding dimension does not match the task binding")
+                message = f"调用成功，向量维度 {len(vectors[0])}"
             else:
                 provider = OpenAICompatibleLLMProvider(base_url=connection.base_url, api_key=key, model=row.model_id, timeout_seconds=self.settings.llm_timeout_seconds, trust_env=not connection.is_local)
-                await provider.chat_json(system_prompt="Return one JSON object only.", user_payload={"reply": "ok"}); message = "结构化 JSON 调用成功"
+                await provider.chat_json(system_prompt="仅返回一个合法 JSON 对象。", user_payload={"reply": "ok"}, temperature=row.temperature or 0.0); message = "结构化 JSON 调用成功"
             row.test_status = "passed"
         except Exception as exc:
             row.test_status, message = "failed", self._safe_error(exc)
@@ -209,7 +238,7 @@ class ModelConfigService:
             current = dict(item)
             if current.get("id") == row.model_id:
                 verification = dict(current.get("verification") or {})
-                verification[capability] = row.test_status
+                verification["admission" if task == "review_analysis" else capability] = row.test_status
                 current["verification"] = verification
                 if row.test_status == "passed" and capability not in current.get("capabilities", []):
                     current["capabilities"] = sorted((set(current.get("capabilities", [])) - {"unknown"}) | {capability})

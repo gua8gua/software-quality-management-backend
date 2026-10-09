@@ -7,6 +7,9 @@
 
 from abc import ABC, abstractmethod
 
+from app.core.error_codes import ErrorCode
+from app.core.exceptions import LLMProviderError
+
 
 class LLMProvider(ABC):
     """统一大模型调用接口。
@@ -19,6 +22,20 @@ class LLMProvider(ABC):
 
     #: 使用的模型名称，用于日志与接口元信息。
     model: str = ""
+    model_version: str = ""
+
+    async def count_tokens(self, text: str) -> int:
+        """Count tokens with the serving model's actual tokenizer.
+
+        Providers that cannot expose the model tokenizer must fail explicitly;
+        callers must not silently substitute a character heuristic.
+        """
+
+        del text
+        raise LLMProviderError(
+            "provider does not expose an exact tokenizer",
+            code=ErrorCode.LLM_CONFIG_ERROR,
+        )
 
     @abstractmethod
     async def chat_json(
@@ -26,8 +43,10 @@ class LLMProvider(ABC):
         *,
         system_prompt: str,
         user_payload: dict,
+        response_schema: dict | None = None,
         temperature: float = 0.0,
         timeout_seconds: int | None = None,
+        max_tokens: int | None = None,
     ) -> dict:
         """以 chat completion 方式调用大模型并返回解析后的 JSON 对象。
 
@@ -41,6 +60,8 @@ class LLMProvider(ABC):
             采样温度。重排、意图识别等确定性任务建议使用 ``0.0``。
         timeout_seconds:
             单次调用超时时间；为 ``None`` 时使用 provider 默认值。
+        max_tokens:
+            当前业务阶段允许生成的最大 token 数；结构化调用必须显式给出预算。
 
         返回
         ----

@@ -102,10 +102,7 @@ def _redact(value):
         return {
             key: (
                 "<redacted>"
-                if any(
-                    word in key.lower()
-                    for word in ("api_key", "token", "password", "secret")
-                )
+                if any(word in key.lower() for word in ("api_key", "token", "password", "secret"))
                 else _redact(item)
             )
             for key, item in value.items()

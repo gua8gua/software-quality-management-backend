@@ -2,7 +2,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -35,6 +35,7 @@ class ModelTaskBinding(Base):
     connection_id: Mapped[str] = mapped_column(ForeignKey("model_connections.id", ondelete="CASCADE"), index=True)
     model_id: Mapped[str] = mapped_column(String(255))
     dimension: Mapped[int | None] = mapped_column(Integer)
+    temperature: Mapped[float | None] = mapped_column(Float, nullable=True)
     test_status: Mapped[str] = mapped_column(String(24), default="untested")
     test_message: Mapped[str] = mapped_column(Text, default="")
     last_tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -1,5 +1,5 @@
-from app.providers.documents.base import DocumentParser
-from app.providers.documents.text import PlainTextDocumentParser
+"""Official document parser provider: Docling for PDF and DOCX."""
 
-__all__ = ["DocumentParser", "PlainTextDocumentParser"]
+from app.providers.documents.docling import convert_bytes
 
+__all__ = ["convert_bytes"]
