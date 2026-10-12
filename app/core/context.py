@@ -10,9 +10,7 @@ import contextvars
 import uuid
 
 # 默认值 "-" 表示当前不在请求上下文中（如启动期、后台任务）
-request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "request_id", default="-"
-)
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
 
 def new_request_id() -> str:

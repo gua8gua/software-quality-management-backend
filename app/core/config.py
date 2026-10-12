@@ -1,65 +1,53 @@
 from functools import lru_cache
 
-from pydantic import Field, model_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
+    tlr_no_progress_seconds: float = Field(default=900, gt=0)
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "Software Quality Management Backend"
     app_env: str = "local"
-
-    # 日志配置
+    database_url: str = (
+        "postgresql+psycopg://postgres:postgres@localhost:5432/software_quality_management"
+    )
     log_level: str = "INFO"
     log_dir: str = "logs"
     log_to_file: bool = True
-    log_rotation: str = "size"  # "size" | "time"
+    log_rotation: str = "size"
     log_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
     log_backup_count: int = Field(default=10, ge=0)
-    log_use_color: bool | None = None  # None=自动（TTY 时启用彩色）
-
-    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/software_quality_management"
-
-    model_base_url: str = "https://api.openai.com/v1"
-    model_api_key: str = ""
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dimension: int = Field(default=1536, gt=0)
-    model_timeout_seconds: float = Field(default=30.0, gt=0)
-
-    vector_store: str = "pgvector"
-    chunk_size: int = Field(default=800, gt=0)
-    chunk_overlap: int = Field(default=100, ge=0)
-    top_k: int = Field(default=5, gt=0, le=100)
-
-    # 通用大模型（OpenAI 兼容接口）—— 重排、改写、意图识别等能力统一走这里
+    log_use_color: bool | None = None
+    llm_enabled: bool = False
     llm_provider: str = "openai_compatible"
-    llm_base_url: str = "https://api.deepseek.com/v1"
+    llm_base_url: str = "http://127.0.0.1:18000/v1"
     llm_api_key: str = ""
-    llm_model: str = "deepseek-chat"
+    llm_model: str = "qwen35-9b"
+    llm_model_version: str = ""
     llm_timeout_seconds: float = Field(default=60.0, gt=0)
-
-    # 重排（rerank）
-    rerank_enabled: bool = False
-    rerank_provider: str = "llm"  # "llm" | "noop"
-    rerank_top_n: int = Field(default=5, gt=0, le=100)
-    rerank_max_candidates: int = Field(default=20, gt=0)
-    rerank_chunk_max_chars: int = Field(default=1000, gt=0)
-    rerank_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
-
-    @model_validator(mode="after")
-    def validate_chunking(self) -> "Settings":
-        if self.chunk_overlap >= self.chunk_size:
-            raise ValueError("CHUNK_OVERLAP must be smaller than CHUNK_SIZE")
-        return self
+    review_model_timeout_seconds: float = Field(default=180.0, gt=0)
+    llm_native_json_schema: bool = False
+    llm_chat_template_enable_thinking: bool | None = None
+    llm_context_window: int = Field(default=16_384, ge=1_024)
+    llm_tokenize_url: str = ""
+    llm_context_safety_tokens: int = Field(default=512, ge=0)
+    trace_fine_max_tokens: int = Field(default=768, ge=64)
+    embedding_provider: str = "sentence_transformers"
+    embedding_base_url: str = ""
+    embedding_api_key: str = ""
+    embedding_timeout_seconds: float = Field(default=60.0, gt=0)
+    embedding_model: str = "Qwen/Qwen3-Embedding-0.6B"
+    embedding_revision: str = "main"
+    embedding_device: str | None = None
+    embedding_batch_size: int = Field(default=8, ge=1, le=256)
+    model_timeout_seconds: float = Field(default=60.0, gt=0)
+    review_worker_lease_seconds: int = Field(default=300, ge=30)
+    model_config_encryption_key: str = ""
+    model_config_key_file: str = "data/model-config.key"
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

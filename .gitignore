@@ -15,3 +15,20 @@ tmp/
 # 本地联调用的临时测试脚本，不入库
 test_rerank.sh
 
+# Reproducible source dependencies, research downloads and run artifacts
+vendor/
+artifacts/
+outputs/
+data/
+# Research payloads stay local; retain source notes in Git.
+docs/research/**/*.pdf
+docs/research/**/*.txt
+docs/research/evaluation-refactor/ReqInOne/
+*.sqlite
+*.sqlite3
+*.db
+.model-config.key
+target/
+.idea/
+.vscode/
+

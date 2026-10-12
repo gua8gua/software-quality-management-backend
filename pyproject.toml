@@ -4,31 +4,47 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "software-quality-management-backend"
-version = "0.1.0"
-description = "Backend foundation for software quality management"
+version = "1.0.0"
+description = "Unified artifact processing and software traceability backend"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "alembic>=1.13,<2.0",
     "asyncpg>=0.30,<1.0",
+    "bm25s>=0.3.11,<0.4",
+    "cryptography>=44,<50",
+    "docling-slim[format-docx,format-pdf,convert-core]>=2.129,<3.0",
+    # Docling's DOCX backend imports this when an OMML equation is encountered,
+    # but docling-slim's format-docx extra does not currently install it.
+    "pylatexenc>=2.10,<3.0",
     "fastapi>=0.115,<1.0",
+    "filetype==1.2.0",
     "httpx>=0.27,<1.0",
-    "pgvector>=0.3,<1.0",
+    "jieba-py>=0.46.12,<0.47",
+    "pgvector>=0.5,<0.6",
     "psycopg[binary]>=3.2,<4.0",
     "pydantic-settings>=2.6,<3.0",
+    "python-multipart>=0.0.20,<1.0",
+    "scipy>=1.14,<2.0",
     "sqlalchemy[asyncio]>=2.0.36,<3.0",
+    "tenacity>=9.0,<10.0",
+    "tokenizers>=0.22,<0.24",
+    "tree-sitter>=0.25,<0.27",
+    "tree-sitter-c>=0.23,<0.24",
+    "tree-sitter-c-sharp>=0.23,<0.24",
+    "tree-sitter-java>=0.23,<0.24",
     "uvicorn[standard]>=0.32,<1.0",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.3,<9.0",
-    "pytest-asyncio>=0.24,<1.0",
-    "ruff>=0.8,<1.0",
-]
+dev = ["aiosqlite>=0.20,<1.0", "pytest>=8.3,<9.0", "pytest-asyncio>=0.24,<1.0", "ruff>=0.8,<1.0"]
+models = ["sentence-transformers>=6.1,<7.0", "transformers>=5.17,<6.0"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+"app.modules.model_config.deepseek_reference" = ["tokenizer.json", "LICENSE", "SOURCES.md"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -37,7 +53,7 @@ testpaths = ["tests"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-exclude = ["build"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC"]
+ignore = ["E501", "B008"]

@@ -83,6 +83,7 @@ class ErrorCode(Enum):
     LLM_RATE_LIMIT = (40005, "大模型调用频率超限")
     LLM_MODEL_ERROR = (40006, "模型不存在或未部署")
     LLM_CONFIG_ERROR = (40007, "大模型配置错误")
+    LLM_OUTPUT_TRUNCATED = (40008, "大模型输出被截断")
 
     # 系统 / 服务 50000~59999
     SERVER_ERROR = (50000, "服务器异常")
